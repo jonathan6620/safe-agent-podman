@@ -23,9 +23,13 @@ Commands:
   logs             Tail proxy logs
 
 Options:
-  --port PORT      Proxy port (default: 8080)
-  --image IMAGE    Container image (default: claude-sandbox)
-  -h, --help       Show this help
+  --image IMAGE       Container image (default: claude-sandbox)
+  --model MODEL       Claude model (e.g. sonnet, opus, claude-sonnet-4-6)
+  --allow-host HOST   Allow network access to HOST (repeatable)
+  --no-firewall       Disable firewall (full network access)
+  --log               Enable API call logging via host proxy
+  --port PORT         Proxy port for logging (default: 8080)
+  -h, --help          Show this help
 `;
 
 function die(msg) {
@@ -34,7 +38,7 @@ function die(msg) {
 }
 
 function parseArgs(argv) {
-  const args = { command: null, rest: [], port: 8080, image: "claude-sandbox" };
+  const args = { command: null, rest: [], port: 8080, image: "claude-sandbox", model: null, allowHosts: [], noFirewall: false, log: false };
   let i = 0;
   while (i < argv.length) {
     const a = argv[i];
@@ -42,6 +46,14 @@ function parseArgs(argv) {
       args.port = parseInt(argv[++i], 10);
     } else if (a === "--image") {
       args.image = argv[++i];
+    } else if (a === "--model") {
+      args.model = argv[++i];
+    } else if (a === "--allow-host") {
+      args.allowHosts.push(argv[++i]);
+    } else if (a === "--no-firewall") {
+      args.noFirewall = true;
+    } else if (a === "--log") {
+      args.log = true;
     } else if (a === "-h" || a === "--help") {
       console.log(USAGE);
       process.exit(0);
@@ -131,11 +143,13 @@ async function cmdUp(args) {
     die(`Container ${name} is already running. Use 'devp shell' to attach.`);
   }
 
-  await ensureProxy(args.port);
+  if (args.log) {
+    await ensureProxy(args.port);
+  }
 
   console.log(`\nStarting container ${name}...`);
   console.log(`  Workspace: ${workspace}`);
-  console.log(`  Proxy:     :${args.port}`);
+  if (args.log) console.log(`  Logging:   :${args.port}`);
   console.log("");
 
   const runArgs = buildArgs({
@@ -143,6 +157,10 @@ async function cmdUp(args) {
     proxyPort: args.port,
     name,
     image: args.image,
+    model: args.model,
+    allowHosts: args.allowHosts,
+    noFirewall: args.noFirewall,
+    log: args.log,
   });
 
   const result = spawn("podman", ["run", ...runArgs], {
@@ -196,7 +214,19 @@ function cmdExec(args) {
 
 function cmdRebuild(args) {
   console.log(`Building ${args.image}...`);
-  execSync(`podman build -t ${args.image} ${ROOT}`, { stdio: "inherit" });
+  const build = spawn("podman", ["build", "-t", args.image, ROOT], {
+    stdio: ["inherit", "inherit", "pipe"],
+  });
+  // Filter out rootless podman capability warnings
+  build.stderr.on("data", (data) => {
+    const lines = data.toString().split("\n");
+    for (const line of lines) {
+      if (line && !line.includes("can't raise ambient capability")) {
+        process.stderr.write(line + "\n");
+      }
+    }
+  });
+  build.on("exit", (code) => process.exit(code ?? 0));
 }
 
 function cmdBuild(args) {

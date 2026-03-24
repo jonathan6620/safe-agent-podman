@@ -6,8 +6,6 @@
     "remoteUser": "vscode",
 
     "remoteEnv": {
-        "ANTHROPIC_BASE_URL": "http://host.containers.internal:8080",
-        "ANTHROPIC_API_KEY": "proxy-managed",
         "NODE_OPTIONS": "--max-old-space-size=4096"
     },
 

@@ -30,28 +30,35 @@ describe("buildArgs", () => {
     );
   });
 
-  it("sets ANTHROPIC_BASE_URL to proxy", () => {
-    const args = buildArgs({
+  it("sets CLAUDE_PROXY_PORT only when log is true", () => {
+    const withLog = buildArgs({
+      workspace: "/home/user/project",
+      proxyPort: 9090,
+      name: "devp-project",
+      image: "claude-sandbox",
+      log: true,
+    });
+    assert.ok(withLog.some((a) => a === "CLAUDE_PROXY_PORT=9090"));
+
+    const withoutLog = buildArgs({
       workspace: "/home/user/project",
       proxyPort: 9090,
       name: "devp-project",
       image: "claude-sandbox",
     });
-    assert.ok(
-      args.some(
-        (a) => a === "ANTHROPIC_BASE_URL=http://host.containers.internal:9090"
-      )
-    );
+    assert.ok(!withoutLog.some((a) => a.startsWith("CLAUDE_PROXY_PORT=")));
   });
 
-  it("sets ANTHROPIC_API_KEY to proxy-managed", () => {
+  it("mounts host credentials read-only when file exists", () => {
     const args = buildArgs({
       workspace: "/home/user/project",
       proxyPort: 8080,
       name: "devp-project",
       image: "claude-sandbox",
     });
-    assert.ok(args.some((a) => a === "ANTHROPIC_API_KEY=proxy-managed"));
+    // Credentials mount depends on whether host file exists
+    // Just verify no ANTHROPIC_API_KEY=proxy-managed is set
+    assert.ok(!args.some((a) => a === "ANTHROPIC_API_KEY=proxy-managed"));
   });
 
   it("mounts workspace at /workspace", () => {
@@ -62,5 +69,26 @@ describe("buildArgs", () => {
       image: "claude-sandbox",
     });
     assert.ok(args.some((a) => a === "/home/user/project:/workspace:Z"));
+  });
+
+  it("includes CLAUDE_MODEL when model is set", () => {
+    const args = buildArgs({
+      workspace: "/home/user/project",
+      proxyPort: 8080,
+      name: "devp-project",
+      image: "claude-sandbox",
+      model: "sonnet",
+    });
+    assert.ok(args.some((a) => a === "CLAUDE_MODEL=sonnet"));
+  });
+
+  it("omits CLAUDE_MODEL when model is not set", () => {
+    const args = buildArgs({
+      workspace: "/home/user/project",
+      proxyPort: 8080,
+      name: "devp-project",
+      image: "claude-sandbox",
+    });
+    assert.ok(!args.some((a) => a.startsWith("CLAUDE_MODEL=")));
   });
 });

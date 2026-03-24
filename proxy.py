@@ -154,7 +154,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         output_tokens = usage.get("output_tokens", 0)
 
         logger.info(
-            "[#%d] → %d | %s | in=%d out=%d | %.1fs",
+            "[#%d] -> %d | %s | in=%d out=%d | %.1fs",
             call_id, status, model, input_tokens, output_tokens, elapsed,
         )
 
@@ -262,7 +262,7 @@ def main() -> None:
     ProxyHandler.log_dir = args.log_dir
 
     server = HTTPServer((args.host, args.port), ProxyHandler)
-    logger.info("Proxy listening on %s:%d → %s", args.host, args.port, ANTHROPIC_API)
+    logger.info("Proxy listening on %s:%d -> %s", args.host, args.port, ANTHROPIC_API)
     logger.info("Container config: ANTHROPIC_BASE_URL=http://host.containers.internal:%d", args.port)
 
     try:

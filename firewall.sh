@@ -1,24 +1,30 @@
 #!/bin/bash
 # Lock down container networking:
-# - Allow traffic to host proxy only
+# - Allow traffic to Anthropic API endpoints (for Claude Code auth + API)
+# - Allow traffic to host proxy (for logging)
+# - Allow extra hosts via DEVP_ALLOW_HOSTS (comma-separated)
 # - Allow DNS resolution
 # - Block everything else outbound
 #
-# The proxy on the host is the ONLY way out to the internet.
+# Set DEVP_NO_FIREWALL=1 to skip all rules (full network access).
 
 set -euo pipefail
 
-HOST_PROXY="host.containers.internal"
-PROXY_PORT="${CLAUDE_PROXY_PORT:-8080}"
-
-# Resolve the host gateway IP
-HOST_IP=$(getent hosts "$HOST_PROXY" | awk '{print $1}')
-if [ -z "$HOST_IP" ]; then
-    echo "WARNING: Could not resolve $HOST_PROXY, skipping firewall"
-    exit 0
+if [ "${DEVP_NO_FIREWALL:-}" = "1" ]; then
+  echo "Firewall: DISABLED (--no-firewall)"
+  exit 0
 fi
 
-echo "Firewall: allowing only $HOST_IP:$PROXY_PORT"
+PROXY_PORT="${CLAUDE_PROXY_PORT:-8080}"
+
+# Allowed Anthropic domains
+ANTHROPIC_DOMAINS=(
+  "api.anthropic.com"
+  "platform.claude.com"
+  "mcp-proxy.anthropic.com"
+  "status.anthropic.com"
+  "statsigapi.net"
+)
 
 # Flush existing rules
 iptables -F OUTPUT 2>/dev/null || true
@@ -33,10 +39,38 @@ iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
 iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT
 
-# Allow proxy on host
-iptables -A OUTPUT -d "$HOST_IP" -p tcp --dport "$PROXY_PORT" -j ACCEPT
+# Allow host proxy
+HOST_PROXY="host.containers.internal"
+HOST_IP=$(getent hosts "$HOST_PROXY" | awk '{print $1}')
+if [ -n "$HOST_IP" ]; then
+  iptables -A OUTPUT -d "$HOST_IP" -p tcp --dport "$PROXY_PORT" -j ACCEPT
+  echo "Firewall: proxy allowed at $HOST_IP:$PROXY_PORT"
+fi
+
+# Allow Anthropic domains (IPv4 only -- iptables doesn't handle IPv6)
+for domain in "${ANTHROPIC_DOMAINS[@]}"; do
+  ips=$(getent ahostsv4 "$domain" 2>/dev/null | awk '{print $1}' | sort -u || true)
+  for ip in $ips; do
+    iptables -A OUTPUT -d "$ip" -p tcp --dport 443 -j ACCEPT
+    echo "Firewall: allowed $domain ($ip)"
+  done
+done
+
+# Allow extra hosts from DEVP_ALLOW_HOSTS (comma-separated)
+if [ -n "${DEVP_ALLOW_HOSTS:-}" ]; then
+  IFS=',' read -ra EXTRA_HOSTS <<< "$DEVP_ALLOW_HOSTS"
+  for domain in "${EXTRA_HOSTS[@]}"; do
+    domain=$(echo "$domain" | xargs)  # trim whitespace
+    ips=$(getent ahostsv4 "$domain" 2>/dev/null | awk '{print $1}' | sort -u || true)
+    for ip in $ips; do
+      iptables -A OUTPUT -d "$ip" -p tcp --dport 443 -j ACCEPT
+      iptables -A OUTPUT -d "$ip" -p tcp --dport 80 -j ACCEPT
+      echo "Firewall: allowed $domain ($ip)"
+    done
+  done
+fi
 
 # Drop everything else
 iptables -A OUTPUT -j DROP
 
-echo "Firewall: active — container can only reach proxy at $HOST_IP:$PROXY_PORT"
+echo "Firewall: active -- only allowed hosts reachable"
