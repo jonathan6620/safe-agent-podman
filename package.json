@@ -1,0 +1,14 @@
+{
+  "name": "devp",
+  "version": "0.1.0",
+  "description": "Podman-based sandbox for Claude Code with host auth proxy",
+  "type": "module",
+  "bin": {
+    "devp": "./bin/devp.mjs"
+  },
+  "scripts": {
+    "test": "node --test 'test/*.test.mjs'"
+  },
+  "keywords": ["claude", "podman", "sandbox", "devcontainer"],
+  "license": "MIT"
+}

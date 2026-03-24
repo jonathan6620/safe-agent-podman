@@ -22,10 +22,12 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Check for API key
-if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
-    echo "ERROR: Set ANTHROPIC_API_KEY before running"
-    echo "  export ANTHROPIC_API_KEY=sk-ant-..."
+# Check for auth — OAuth session from ~/.claude/.credentials.json is used by default.
+# ANTHROPIC_API_KEY is supported as an optional override.
+if [ -z "${ANTHROPIC_API_KEY:-}" ] && [ ! -f "${HOME}/.claude/.credentials.json" ]; then
+    echo "ERROR: No auth found."
+    echo "  Log in with 'claude' first (creates ~/.claude/.credentials.json)"
+    echo "  Or set ANTHROPIC_API_KEY for API key auth."
     exit 1
 fi
 

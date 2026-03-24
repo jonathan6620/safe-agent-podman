@@ -2,7 +2,7 @@
 Host-side auth proxy for Claude Code containers.
 
 Sits between the container and api.anthropic.com:
-- Injects authentication from the host's Claude session
+- Injects authentication from the host's Claude OAuth session
 - Logs all API calls (model, tokens, cost estimate)
 - Container never sees credentials
 
@@ -24,15 +24,35 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
 ANTHROPIC_API = "https://api.anthropic.com"
+CREDENTIALS_PATH = Path.home() / ".claude" / ".credentials.json"
 logger = logging.getLogger("claude-proxy")
 
 
-def get_api_key() -> str:
-    """Get API key from env or apiKeyHelper-style script."""
-    key = os.environ.get("ANTHROPIC_API_KEY")
-    if key:
-        return key
+def _read_oauth_token() -> str | None:
+    """Read the OAuth access token from Claude Code's credentials file."""
+    try:
+        data = json.loads(CREDENTIALS_PATH.read_text())
+        token = data.get("claudeAiOauth", {}).get("accessToken")
+        if token:
+            return token
+    except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
+        logger.debug("Could not read OAuth token from %s: %s", CREDENTIALS_PATH, e)
+    return None
 
+
+def get_auth_token() -> str:
+    """Get authentication token. Prefers Claude OAuth session, falls back to API key."""
+    # 1. Explicit env override
+    token = os.environ.get("ANTHROPIC_API_KEY")
+    if token:
+        return token
+
+    # 2. Claude Code's OAuth session (default)
+    token = _read_oauth_token()
+    if token:
+        return token
+
+    # 3. Key helper script
     helper = os.environ.get("CLAUDE_PROXY_KEY_HELPER")
     if helper:
         result = subprocess.run(
@@ -43,13 +63,8 @@ def get_api_key() -> str:
         logger.error("Key helper failed: %s", result.stderr)
 
     raise RuntimeError(
-        "Set ANTHROPIC_API_KEY or CLAUDE_PROXY_KEY_HELPER"
+        "No auth found. Log in with 'claude' first, or set ANTHROPIC_API_KEY."
     )
-
-
-def get_auth_token() -> str | None:
-    """Get OAuth session token if available."""
-    return os.environ.get("ANTHROPIC_AUTH_TOKEN")
 
 
 class ProxyHandler(BaseHTTPRequestHandler):
@@ -106,13 +121,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 req.add_header(key, value)
 
         # Inject host credentials
-        api_key = get_api_key()
-        req.add_header("x-api-key", api_key)
-
-        auth_token = get_auth_token()
-        if auth_token:
-            bearer = auth_token if auth_token.startswith("Bearer ") else f"Bearer {auth_token}"
-            req.add_header("Authorization", bearer)
+        token = get_auth_token()
+        req.add_header("x-api-key", token)
 
         # Forward to Anthropic
         try:
@@ -240,8 +250,8 @@ def main() -> None:
 
     # Validate credentials are available before starting
     try:
-        key = get_api_key()
-        logger.info("Auth: API key loaded (%s...%s)", key[:6], key[-4:])
+        token = get_auth_token()
+        logger.info("Auth: token loaded (%s...%s)", token[:10], token[-4:])
     except RuntimeError as e:
         logger.error(str(e))
         sys.exit(1)
