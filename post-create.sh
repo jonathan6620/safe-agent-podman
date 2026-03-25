@@ -16,28 +16,29 @@ echo '{"model":"'"${CLAUDE_MODEL}"'","permissions":{"defaultMode":"bypassPermiss
 # Set bat theme based on Claude theme preference
 if [ -f "${HOME}/.claude.json" ]; then
   CLAUDE_THEME=$(python3 -c "import json; print(json.load(open('${HOME}/.claude.json')).get('theme','dark'))" 2>/dev/null || echo "dark")
-  if [ "$CLAUDE_THEME" = "light" ]; then
-    export BAT_THEME="GitHub"
-  else
-    export BAT_THEME="Monokai Extended"
-  fi
-  echo "export BAT_THEME=\"${BAT_THEME}\"" >> "${HOME}/.zshrc" 2>/dev/null || true
-  echo "export BAT_THEME=\"${BAT_THEME}\"" >> "${HOME}/.bashrc" 2>/dev/null || true
+else
+  CLAUDE_THEME="dark"
+fi
+if [ "$CLAUDE_THEME" = "light" ]; then
+  export BAT_THEME="GitHub"
+else
+  export BAT_THEME="Monokai Extended"
+fi
+echo "export BAT_THEME=\"${BAT_THEME}\"" >> "${HOME}/.zshrc" 2>/dev/null || true
+echo "export BAT_THEME=\"${BAT_THEME}\"" >> "${HOME}/.bashrc" 2>/dev/null || true
+
+# Seed workspace trust (skip in proxy-auth mode -- no OAuth, uses --bare)
+if [ "${DEVP_PROXY_AUTH:-}" != "1" ]; then
+  claude -p "ok" --dangerously-skip-permissions > /dev/null 2>&1 || true
 fi
 
-# Pre-accept workspace trust by running claude once in print mode
-# (-p skips the trust dialog and seeds the acceptance in .claude.json)
-claude -p "ok" --dangerously-skip-permissions > /dev/null 2>&1 || true
-
-# Check auth files
-CREDS_OK="no"
-CLAUDE_JSON_OK="no"
-[ -f "${CLAUDE_DIR}/.credentials.json" ] && CREDS_OK="yes"
-[ -f "${HOME}/.claude.json" ] && CLAUDE_JSON_OK="yes"
+# Status
+AUTH_MODE="mounted credentials"
+if [ "${DEVP_PROXY_AUTH:-}" = "1" ]; then
+  AUTH_MODE="proxy-injected (no creds in container)"
+fi
 
 echo "Claude Code sandbox ready"
-echo "  Model:       ${CLAUDE_MODEL}"
-echo "  Proxy port:  ${CLAUDE_PROXY_PORT:-not set}"
-echo "  Credentials: ${CREDS_OK}"
-echo "  claude.json: ${CLAUDE_JSON_OK}"
-echo "  Perms:       bypassPermissions"
+echo "  Model:   ${CLAUDE_MODEL}"
+echo "  Auth:    ${AUTH_MODE}"
+echo "  Perms:   bypassPermissions"

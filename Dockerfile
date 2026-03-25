@@ -46,7 +46,7 @@ COPY entrypoint.sh /setup/entrypoint.sh
 RUN chmod +x /setup/*.sh
 
 USER vscode
-RUN mkdir -p /home/vscode/.claude /home/vscode/.local/bin \
-    && ln -s /usr/local/bin/claude /home/vscode/.local/bin/claude
+ENV PATH="/home/vscode/.local/bin:${PATH}"
+RUN mkdir -p /home/vscode/.claude /home/vscode/.local/bin
 WORKDIR /workspace
 ENTRYPOINT ["/setup/entrypoint.sh"]
