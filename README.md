@@ -50,8 +50,9 @@ devp up ~/my-project
 devp <command> [options]
 
 Commands:
-  up [PATH]           Start container (default: current dir)
-  down                Stop the running container
+  up [PATH]           Start or reattach to container (default: current dir)
+  down                Stop the container (preserves state)
+  rm                  Remove a stopped container
   shell               Open a shell in the running container
   exec CMD...         Run a command in the running container
   status              Show auth and container status
@@ -96,6 +97,20 @@ apt install -y jq
 apt-get install -y build-essential
 ```
 
+### Container lifecycle
+
+Containers persist across shell exits. Installed packages and state are preserved until you explicitly remove the container.
+
+```bash
+devp up ~/project          # create container, attach shell
+# ... work, exit shell ...
+devp up ~/project          # reattach to same container (state preserved)
+devp shell                 # open additional shell in running container
+devp down                  # stop container (state preserved)
+devp up ~/project          # restart stopped container (state preserved)
+devp rm                    # remove container (state deleted)
+```
+
 ### Examples
 
 ```bash
@@ -117,12 +132,12 @@ devp up --model sonnet ~/project
 # Check status
 devp status
 
-# Open a shell / run a command
-devp shell
+# Run a command
 devp exec claude --version
 
-# Stop
+# Stop and remove
 devp down
+devp rm
 ```
 
 ### run.sh (alternative)
@@ -148,6 +163,7 @@ The shell launcher supports the same options:
 | `Dockerfile`          | Container image -- Ubuntu 24.04, Node.js 22, Claude Code (native installer) |
 | `devcontainer.json`   | VS Code / devcontainer CLI configuration                  |
 | `firewall.sh`         | iptables rules -- restricts outbound network access       |
+| `zshrc`               | Shell configuration -- oh-my-zsh, fnm, PATH               |
 | `entrypoint.sh`       | Container entrypoint -- runs setup on first start         |
 | `post-create.sh`      | Setup -- applies firewall, configures claude, seeds trust |
 
