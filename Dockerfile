@@ -45,8 +45,14 @@ COPY firewall.sh /setup/firewall.sh
 COPY entrypoint.sh /setup/entrypoint.sh
 RUN chmod +x /setup/*.sh
 
+# Allow vscode user to run apt/apt-get without sudo
+RUN printf '#!/bin/bash\nexec sudo /usr/bin/apt "$@"\n' > /usr/local/bin/apt \
+    && chmod +x /usr/local/bin/apt \
+    && printf '#!/bin/bash\nexec sudo /usr/bin/apt-get "$@"\n' > /usr/local/bin/apt-get \
+    && chmod +x /usr/local/bin/apt-get
+
 USER vscode
-ENV PATH="/home/vscode/.local/bin:${PATH}"
 RUN mkdir -p /home/vscode/.claude /home/vscode/.local/bin
+COPY --chown=vscode:vscode zshrc /home/vscode/.zshrc
 WORKDIR /workspace
 ENTRYPOINT ["/setup/entrypoint.sh"]

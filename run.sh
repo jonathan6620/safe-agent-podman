@@ -15,6 +15,7 @@ LOG_DIR="${SCRIPT_DIR}/logs"
 CLAUDE_MODEL=""
 ALLOW_HOSTS=""
 BYPASS=""
+SAFE_NETWORK=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -24,6 +25,7 @@ while [[ $# -gt 0 ]]; do
         --model) CLAUDE_MODEL="$2"; shift 2 ;;
         --allow-host) ALLOW_HOSTS="${ALLOW_HOSTS:+${ALLOW_HOSTS},}$2"; shift 2 ;;
         --bypass) BYPASS="1"; shift ;;
+        --safe-network) SAFE_NETWORK="1"; shift ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
@@ -99,6 +101,7 @@ podman run -it --rm \
     ${BYPASS:+-e "DEVP_BYPASS_PERMISSIONS=1"} \
     ${ALLOW_HOSTS:+-e "DEVP_ALLOW_HOSTS=${ALLOW_HOSTS}"} \
     ${NO_FIREWALL:+-e "DEVP_NO_FIREWALL=1"} \
+    ${SAFE_NETWORK:+-e "DEVP_SAFE_NETWORK=1"} \
     ${CREDS_MOUNT} \
     ${CLAUDE_JSON_MOUNT} \
     -v "${WORKSPACE}:/workspace:Z" \

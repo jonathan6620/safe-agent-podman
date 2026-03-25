@@ -2,6 +2,11 @@
 # Run setup on first start, then exec the user's command.
 set -euo pipefail
 
+# Bootstrap PATH for non-interactive commands (mirrors .zshrc)
+export FNM_DIR="/usr/local/share/fnm"
+eval "$(fnm env --shell bash)"
+export PATH="$HOME/.local/bin:$PATH"
+
 SETUP_DONE="/tmp/.devp-setup-done"
 
 if [ ! -f "$SETUP_DONE" ]; then

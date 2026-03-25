@@ -15,6 +15,32 @@ if [ "${DEVP_NO_FIREWALL:-}" = "1" ]; then
   exit 0
 fi
 
+# Safe network mode: allow package managers + common dev registries
+SAFE_DOMAINS=()
+if [ "${DEVP_SAFE_NETWORK:-}" = "1" ]; then
+  SAFE_DOMAINS+=(
+    # APT / Ubuntu
+    "archive.ubuntu.com"
+    "security.ubuntu.com"
+    "ppa.launchpadcontent.net"
+    # npm
+    "registry.npmjs.org"
+    # PyPI
+    "pypi.org"
+    "files.pythonhosted.org"
+    # GitHub (releases, clones)
+    "github.com"
+    "objects.githubusercontent.com"
+    "raw.githubusercontent.com"
+    # Rust / Cargo
+    "crates.io"
+    "static.crates.io"
+    # Go modules
+    "proxy.golang.org"
+    "sum.golang.org"
+  )
+fi
+
 PROXY_PORT="${CLAUDE_PROXY_PORT:-8080}"
 
 # Allowed Anthropic domains
@@ -69,6 +95,16 @@ if [ -n "${DEVP_ALLOW_HOSTS:-}" ]; then
     done
   done
 fi
+
+# Allow safe network domains (package managers, registries)
+for domain in "${SAFE_DOMAINS[@]}"; do
+  ips=$(getent ahostsv4 "$domain" 2>/dev/null | awk '{print $1}' | sort -u || true)
+  for ip in $ips; do
+    iptables -A OUTPUT -d "$ip" -p tcp --dport 443 -j ACCEPT
+    iptables -A OUTPUT -d "$ip" -p tcp --dport 80 -j ACCEPT
+    echo "Firewall: allowed $domain ($ip) [safe-network]"
+  done
+done
 
 # Drop everything else
 iptables -A OUTPUT -j DROP

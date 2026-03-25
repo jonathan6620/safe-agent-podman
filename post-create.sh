@@ -29,8 +29,12 @@ if [ "$CLAUDE_THEME" = "light" ]; then
 else
   BAT_THEME="Monokai Extended"
 fi
-echo "export BAT_THEME=\"${BAT_THEME}\"" >> "${HOME}/.zshrc" 2>/dev/null || true
-echo "export BAT_THEME=\"${BAT_THEME}\"" >> "${HOME}/.bashrc" 2>/dev/null || true
+# Write BAT_THEME into .zshrc (replace placeholder or append)
+if grep -q '^# BAT_THEME' "${HOME}/.zshrc" 2>/dev/null; then
+  sed -i "s|^# BAT_THEME.*|export BAT_THEME=\"${BAT_THEME}\"|" "${HOME}/.zshrc"
+else
+  echo "export BAT_THEME=\"${BAT_THEME}\"" >> "${HOME}/.zshrc"
+fi
 
 # Seed workspace trust by running claude once in print mode
 claude -p "ok" --dangerously-skip-permissions > /dev/null 2>&1 || true

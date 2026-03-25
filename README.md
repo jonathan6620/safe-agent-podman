@@ -20,7 +20,7 @@ A Podman-based sandbox for running Claude Code with `bypassPermissions` safely e
          X--- github.com (BLOCKED by default)
 ```
 
-Host auth files are mounted into the container (`~/.claude/.credentials.json` read-only, `~/.claude.json` writable for project trust settings). The iptables firewall blocks all outbound traffic except Anthropic API endpoints. Use `--allow-host` to whitelist additional domains or `--no-firewall` for full access.
+Host auth files are mounted into the container (`~/.claude/.credentials.json` read-only, `~/.claude.json` writable for project trust settings). The iptables firewall blocks all outbound traffic except Anthropic API endpoints. Use `--allow-host` to whitelist additional domains, `--safe-network` to allow package managers, or omit both for full access.
 
 ## Prerequisites
 
@@ -36,6 +36,7 @@ npm link
 
 # 2. Build the container image
 devp build
+# or: podman build -t claude-sandbox .
 
 # 3. Run (uses your Claude OAuth session automatically)
 devp up ~/my-project
@@ -60,10 +61,39 @@ Commands:
 Options:
   --image IMAGE       Container image (default: claude-sandbox)
   --model MODEL       Claude model (default: opus)
-  --bypass            Enable bypassPermissions (default: off)
+  --no-bypass         Disable bypassPermissions (default: on)
   --allow-host HOST   Restrict network to Anthropic + HOST (repeatable)
+  --safe-network      Allow package managers (apt, npm, pip, etc.) through firewall
   --log               Enable API call logging via host proxy
   --port PORT         Proxy port (default: 8080)
+```
+
+### Network modes
+
+| Mode | Firewall | Package install | Use case |
+| ---- | -------- | --------------- | -------- |
+| Default (no flags) | Off | Full access | Trusted environments |
+| `--safe-network` | On | Yes (apt, npm, pip, cargo, go) | Install dependencies safely |
+| `--allow-host HOST` | On | No (unless HOST is a registry) | Minimal access |
+| `--safe-network --allow-host HOST` | On | Yes + custom domains | Dependencies + specific APIs |
+
+The `--safe-network` flag allows connections to these domains through the firewall:
+
+- **APT**: `archive.ubuntu.com`, `security.ubuntu.com`, `ppa.launchpadcontent.net`
+- **npm**: `registry.npmjs.org`
+- **PyPI**: `pypi.org`, `files.pythonhosted.org`
+- **GitHub**: `github.com`, `objects.githubusercontent.com`, `raw.githubusercontent.com`
+- **Cargo**: `crates.io`, `static.crates.io`
+- **Go**: `proxy.golang.org`, `sum.golang.org`
+
+### Installing packages
+
+The container allows `apt` and `apt-get` without `sudo`:
+
+```bash
+# Inside the container -- no sudo needed
+apt install -y jq
+apt-get install -y build-essential
 ```
 
 ### Examples
@@ -72,10 +102,13 @@ Options:
 # Full network access (default)
 devp up ~/my-project
 
-# With bypassPermissions enabled
-devp up --bypass ~/trusted-project
+# Firewall on, but allow package managers
+devp up --safe-network ~/my-project
 
-# Restrict network to Anthropic + GitHub only
+# Firewall on, package managers + custom domain
+devp up --safe-network --allow-host api.github.com ~/project
+
+# Restrict network to Anthropic + GitHub only (no package managers)
 devp up --allow-host github.com --allow-host api.github.com ~/project
 
 # Use a specific model
@@ -97,8 +130,9 @@ devp down
 The shell launcher supports the same options:
 
 ```bash
+./run.sh --workspace ~/project --safe-network
 ./run.sh --workspace ~/project --allow-host github.com
-./run.sh --workspace ~/project --no-firewall
+./run.sh --workspace ~/project  # no firewall (default)
 ```
 
 ## Files
@@ -121,8 +155,9 @@ The shell launcher supports the same options:
 
 1. **Rootless Podman** -- no Docker daemon, no root. Runs as your host user via `--userns=keep-id`.
 2. **Mounted credentials** -- `~/.claude/.credentials.json` mounted read-only, `~/.claude.json` writable (for workspace trust).
-3. **Network firewall (opt-in)** -- use `--allow-host` to restrict outbound traffic to Anthropic + specified domains. Without it, network is open.
-4. **bypassPermissions (opt-in)** -- use `--bypass` to enable. Without it, Claude Code uses default permission prompts.
+3. **Network firewall (opt-in)** -- use `--allow-host` or `--safe-network` to restrict outbound traffic. Without either, network is open.
+4. **bypassPermissions (default: on)** -- use `--no-bypass` to disable. The container is the security boundary.
+5. **Sudoless package install** -- `apt` and `apt-get` work without `sudo` inside the container for easy dependency installation.
 
 ## API call logging
 
@@ -152,9 +187,10 @@ Auth is read from `~/.claude/.credentials.json` and `~/.claude.json` automatical
 | Variable                  | Description                                           |
 | ------------------------- | ----------------------------------------------------- |
 | `CLAUDE_MODEL`            | Model alias (default: opus, override: `--model`)      |
-| `DEVP_BYPASS_PERMISSIONS` | Set to 1 for bypassPermissions (set with `--bypass`)  |
+| `DEVP_BYPASS_PERMISSIONS` | Set to 1 for bypassPermissions (default, disable: `--no-bypass`) |
 | `DEVP_ALLOW_HOSTS`        | Comma-separated allowed domains (enables firewall)    |
-| `DEVP_NO_FIREWALL`        | Set to 1 when no `--allow-host` (open network)        |
+| `DEVP_SAFE_NETWORK`       | Set to 1 to allow package manager domains through firewall |
+| `DEVP_NO_FIREWALL`        | Set to 1 when no `--allow-host`/`--safe-network` (open network) |
 | `CLAUDE_PROXY_PORT`       | Proxy port for firewall rules (set with `--log`)      |
 
 ## Inspired by

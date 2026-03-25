@@ -27,6 +27,7 @@ Options:
   --model MODEL       Claude model (e.g. sonnet, opus, claude-sonnet-4-6)
   --no-bypass         Disable bypassPermissions (default: on)
   --allow-host HOST   Restrict network to Anthropic + HOST (repeatable)
+  --safe-network      Allow package managers (apt, npm, pip, etc.) through firewall
   --log               Enable API call logging via host proxy
   --port PORT         Proxy port (default: 8080)
   -h, --help          Show this help
@@ -38,7 +39,7 @@ function die(msg) {
 }
 
 function parseArgs(argv) {
-  const args = { command: null, rest: [], port: 8080, image: "claude-sandbox", model: null, allowHosts: [], bypass: true, log: false };
+  const args = { command: null, rest: [], port: 8080, image: "claude-sandbox", model: null, allowHosts: [], bypass: true, safeNetwork: false, log: false };
   let i = 0;
   while (i < argv.length) {
     const a = argv[i];
@@ -52,6 +53,8 @@ function parseArgs(argv) {
       args.allowHosts.push(argv[++i]);
     } else if (a === "--no-bypass") {
       args.bypass = false;
+    } else if (a === "--safe-network") {
+      args.safeNetwork = true;
     } else if (a === "--log") {
       args.log = true;
     } else if (a === "-h" || a === "--help") {
@@ -160,6 +163,7 @@ async function cmdUp(args) {
     model: args.model,
     allowHosts: args.allowHosts,
     bypass: args.bypass,
+    safeNetwork: args.safeNetwork,
     log: args.log,
   });
 
