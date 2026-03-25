@@ -15,6 +15,7 @@ const USAGE = `Usage: devp <command> [options]
 Commands:
   up [PATH]        Start proxy + container (default: current dir)
   down             Stop the running container
+  rm               Remove a stopped container
   shell            Open a shell in the running container
   exec CMD...      Run a command in the running container
   rebuild          Rebuild the container image
@@ -143,31 +144,55 @@ async function cmdUp(args) {
   const name = containerName(workspace);
 
   if (isContainerRunning(name)) {
-    die(`Container ${name} is already running. Use 'devp shell' to attach.`);
+    console.log(`Container ${name} is already running. Attaching...`);
+    attachShell(name);
+    return;
   }
 
   if (args.log) {
     await ensureProxy(args.port);
   }
 
-  console.log(`\nStarting container ${name}...`);
-  console.log(`  Workspace: ${workspace}`);
-  if (args.log) console.log(`  Logging:   :${args.port}`);
-  console.log("");
+  // Restart existing stopped container, or create a new one
+  const existing = findContainer(name);
+  if (existing) {
+    console.log(`\nRestarting container ${name}...`);
+    execSync(`podman start ${name}`, { stdio: "ignore" });
+  } else {
+    console.log(`\nCreating container ${name}...`);
+    console.log(`  Workspace: ${workspace}`);
+    if (args.log) console.log(`  Logging:   :${args.port}`);
+    console.log("");
 
-  const runArgs = buildArgs({
-    workspace,
-    proxyPort: args.port,
-    name,
-    image: args.image,
-    model: args.model,
-    allowHosts: args.allowHosts,
-    bypass: args.bypass,
-    safeNetwork: args.safeNetwork,
-    log: args.log,
-  });
+    const runArgs = buildArgs({
+      workspace,
+      proxyPort: args.port,
+      name,
+      image: args.image,
+      model: args.model,
+      allowHosts: args.allowHosts,
+      bypass: args.bypass,
+      safeNetwork: args.safeNetwork,
+      log: args.log,
+    });
 
-  const result = spawn("podman", ["run", ...runArgs], {
+    execSync(`podman run ${runArgs.map(a => `'${a}'`).join(" ")}`, { stdio: "ignore" });
+  }
+
+  // Wait for container to be running
+  for (let i = 0; i < 10; i++) {
+    if (isContainerRunning(name)) break;
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  if (!isContainerRunning(name)) {
+    die(`Container ${name} failed to start. Check 'podman logs ${name}'.`);
+  }
+
+  attachShell(name);
+}
+
+function attachShell(name) {
+  const result = spawn("podman", ["exec", "-it", name, "zsh"], {
     stdio: "inherit",
   });
   result.on("exit", (code) => process.exit(code ?? 0));
@@ -181,8 +206,28 @@ function cmdDown(args) {
     die(`No container found for ${name}`);
   }
 
+  if (!isContainerRunning(name)) {
+    die(`Container ${name} is not running.`);
+  }
+
   console.log(`Stopping ${name}...`);
   execSync(`podman stop ${name}`, { stdio: "inherit" });
+}
+
+function cmdRm(args) {
+  const workspace = path.resolve(args.rest[0] || process.cwd());
+  const name = containerName(workspace);
+
+  if (!findContainer(name)) {
+    die(`No container found for ${name}`);
+  }
+
+  if (isContainerRunning(name)) {
+    die(`Container ${name} is still running. Use 'devp down' first.`);
+  }
+
+  console.log(`Removing ${name}...`);
+  execSync(`podman rm ${name}`, { stdio: "inherit" });
 }
 
 function cmdShell(args) {
@@ -255,7 +300,14 @@ async function cmdStatus(args) {
 
   // Container
   const running = isContainerRunning(name);
-  console.log(`Container: ${running ? `${name} (running)` : "not running"}`);
+  const exists = findContainer(name);
+  if (running) {
+    console.log(`Container: ${name} (running)`);
+  } else if (exists) {
+    console.log(`Container: ${name} (stopped)`);
+  } else {
+    console.log("Container: not created");
+  }
 }
 
 function cmdLogs() {
@@ -270,6 +322,7 @@ const args = parseArgs(process.argv.slice(2));
 const commands = {
   up: cmdUp,
   down: cmdDown,
+  rm: cmdRm,
   shell: cmdShell,
   exec: cmdExec,
   rebuild: cmdRebuild,

@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
+# Refresh apt package lists (cleared during image build to save space)
+sudo apt-get update -qq 2>/dev/null || echo "WARNING: apt-get update failed (network restricted?)"
+
 # Apply network firewall (requires NET_ADMIN, may fail in test runs)
 sudo -E bash /setup/firewall.sh || echo "WARNING: Firewall setup failed (missing NET_ADMIN?)"
 

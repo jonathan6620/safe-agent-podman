@@ -89,7 +89,7 @@ if [ -z "${ALLOW_HOSTS}" ]; then
     NO_FIREWALL="1"
 fi
 
-podman run -it --rm \
+podman run -d \
     --name claude-sandbox \
     --userns=keep-id \
     --security-opt=label=disable \
@@ -106,5 +106,7 @@ podman run -it --rm \
     ${CLAUDE_JSON_MOUNT} \
     -v "${WORKSPACE}:/workspace:Z" \
     -v "claude-sandbox-history:/commandhistory" \
-    claude-sandbox \
-    "$@"
+    claude-sandbox
+
+# Attach interactive shell
+podman exec -it claude-sandbox zsh

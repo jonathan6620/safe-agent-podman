@@ -23,9 +23,10 @@ WRAPPER
   touch "$SETUP_DONE"
 fi
 
-# Default to interactive shell if no command given
+# Default: keep container alive for shell attachment via devp shell/up
+# If a command is given, run it instead.
 if [ $# -eq 0 ]; then
-  exec zsh
+  exec sleep infinity
 else
   exec "$@"
 fi
