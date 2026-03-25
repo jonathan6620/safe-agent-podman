@@ -85,7 +85,7 @@ fi
 
 # Firewall: on when --allow-host is used, off by default
 NO_FIREWALL=""
-if [ -z "${ALLOW_HOSTS}" ]; then
+if [ -z "${ALLOW_HOSTS}" ] && [ -z "${SAFE_NETWORK}" ]; then
     NO_FIREWALL="1"
 fi
 
@@ -97,6 +97,7 @@ podman run -d \
     --cap-add=NET_RAW \
     --network=slirp4netns:allow_host_loopback=true \
     -e "CLAUDE_PROXY_PORT=${PROXY_PORT}" \
+    -e "ANTHROPIC_BASE_URL=http://host.containers.internal:${PROXY_PORT}" \
     ${CLAUDE_MODEL:+-e "CLAUDE_MODEL=${CLAUDE_MODEL}"} \
     ${BYPASS:+-e "DEVP_BYPASS_PERMISSIONS=1"} \
     ${ALLOW_HOSTS:+-e "DEVP_ALLOW_HOSTS=${ALLOW_HOSTS}"} \

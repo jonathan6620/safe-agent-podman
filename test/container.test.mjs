@@ -1,6 +1,13 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { buildArgs, containerName } from "../lib/container.mjs";
+import {
+  buildArgs,
+  containerConfig,
+  containerName,
+  diffContainerConfig,
+  envListToMap,
+  proxyBaseUrl,
+} from "../lib/container.mjs";
 
 describe("containerName", () => {
   it("derives name from workspace path", () => {
@@ -39,6 +46,9 @@ describe("buildArgs", () => {
       log: true,
     });
     assert.ok(withLog.some((a) => a === "CLAUDE_PROXY_PORT=9090"));
+    assert.ok(
+      withLog.some((a) => a === `ANTHROPIC_BASE_URL=${proxyBaseUrl(9090)}`)
+    );
 
     const withoutLog = buildArgs({
       workspace: "/home/user/project",
@@ -114,6 +124,18 @@ describe("buildArgs", () => {
     assert.ok(args.some((a) => a === "DEVP_ALLOW_HOSTS=github.com"));
   });
 
+  it("enables firewall when --safe-network is used", () => {
+    const args = buildArgs({
+      workspace: "/home/user/project",
+      proxyPort: 8080,
+      name: "devp-project",
+      image: "claude-sandbox",
+      safeNetwork: true,
+    });
+    assert.ok(!args.some((a) => a === "DEVP_NO_FIREWALL=1"));
+    assert.ok(args.some((a) => a === "DEVP_SAFE_NETWORK=1"));
+  });
+
   it("sets bypass permissions when --bypass is used", () => {
     const args = buildArgs({
       workspace: "/home/user/project",
@@ -123,5 +145,47 @@ describe("buildArgs", () => {
       bypass: true,
     });
     assert.ok(args.some((a) => a === "DEVP_BYPASS_PERMISSIONS=1"));
+  });
+});
+
+describe("container config helpers", () => {
+  it("maps env lists to objects", () => {
+    assert.deepEqual(envListToMap(["A=1", "B=two=parts"]), {
+      A: "1",
+      B: "two=parts",
+    });
+  });
+
+  it("detects managed config drift", () => {
+    const desired = containerConfig({
+      image: "claude-sandbox",
+      proxyPort: 8080,
+      model: "sonnet",
+      allowHosts: ["github.com"],
+      safeNetwork: true,
+      log: true,
+    });
+    const actual = {
+      image: "localhost/other-sandbox:latest",
+      env: {
+        ANTHROPIC_BASE_URL: proxyBaseUrl(8081),
+        CLAUDE_PROXY_PORT: "8081",
+        CLAUDE_MODEL: "opus",
+        DEVP_BYPASS_PERMISSIONS: "1",
+        DEVP_ALLOW_HOSTS: "github.com",
+      },
+    };
+
+    const diffs = diffContainerConfig(actual, desired);
+    assert.deepEqual(
+      diffs.map(({ key }) => key),
+      [
+        "image",
+        "ANTHROPIC_BASE_URL",
+        "CLAUDE_PROXY_PORT",
+        "CLAUDE_MODEL",
+        "DEVP_SAFE_NETWORK",
+      ]
+    );
   });
 });

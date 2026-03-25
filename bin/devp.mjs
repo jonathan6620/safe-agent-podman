@@ -1,11 +1,17 @@
 #!/usr/bin/env node
 
-import { spawn, execSync } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getAuthToken } from "../lib/auth.mjs";
 import { checkProxy } from "../lib/proxy-check.mjs";
-import { containerName, buildArgs } from "../lib/container.mjs";
+import {
+  buildArgs,
+  containerConfig,
+  containerName,
+  diffContainerConfig,
+  envListToMap,
+} from "../lib/container.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -73,8 +79,9 @@ function parseArgs(argv) {
 
 function findContainer(name) {
   try {
-    const out = execSync(
-      `podman ps -a --filter name=^${name}$ --format '{{.ID}}'`,
+    const out = execFileSync(
+      "podman",
+      ["ps", "-a", "--filter", `name=^${name}$`, "--format", "{{.ID}}"],
       { encoding: "utf-8" }
     ).trim();
     return out || null;
@@ -85,13 +92,82 @@ function findContainer(name) {
 
 function isContainerRunning(name) {
   try {
-    const out = execSync(
-      `podman ps --filter name=^${name}$ --filter status=running --format '{{.ID}}'`,
+    const out = execFileSync(
+      "podman",
+      [
+        "ps",
+        "--filter",
+        `name=^${name}$`,
+        "--filter",
+        "status=running",
+        "--format",
+        "{{.ID}}",
+      ],
       { encoding: "utf-8" }
     ).trim();
     return !!out;
   } catch {
     return false;
+  }
+}
+
+function inspectContainerConfig(name) {
+  try {
+    const out = execFileSync(
+      "podman",
+      ["inspect", "--format", "{{json .}}", name],
+      { encoding: "utf-8" }
+    );
+    const inspect = JSON.parse(out);
+    return {
+      image: inspect.ImageName || inspect.Config?.Image || null,
+      env: envListToMap(inspect.Config?.Env ?? []),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function formatConfigDiffs(diffs) {
+  return diffs
+    .map(({ key, actual, expected }) => {
+      const current = actual ?? "(unset)";
+      const desired = expected ?? "(unset)";
+      return `${key}: current=${current} desired=${desired}`;
+    })
+    .join("\n  ");
+}
+
+function shellQuote(value) {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function ensureContainerMatchesConfig(name, args) {
+  const actual = inspectContainerConfig(name);
+  if (!actual) {
+    return;
+  }
+
+  const desired = containerConfig({
+    image: args.image,
+    proxyPort: args.port,
+    model: args.model,
+    allowHosts: args.allowHosts,
+    bypass: args.bypass,
+    safeNetwork: args.safeNetwork,
+    log: args.log,
+  });
+  const diffs = diffContainerConfig(actual, desired);
+
+  if (diffs.length > 0) {
+    const rmCommand = args.rest[0]
+      ? `devp rm ${shellQuote(args.rest[0])}`
+      : "devp rm";
+    die(
+      `Container ${name} was created with different settings.\n\n` +
+        `  ${formatConfigDiffs(diffs)}\n\n` +
+        `Remove it with '${rmCommand}' and run 'devp up' again.`
+    );
   }
 }
 
@@ -142,6 +218,7 @@ async function ensureProxy(port) {
 async function cmdUp(args) {
   const workspace = path.resolve(args.rest[0] || process.cwd());
   const name = containerName(workspace);
+  const existing = findContainer(name);
 
   if (isContainerRunning(name)) {
     console.log(`Container ${name} is already running. Attaching...`);
@@ -149,16 +226,18 @@ async function cmdUp(args) {
     return;
   }
 
-  if (args.log) {
-    await ensureProxy(args.port);
-  }
-
   // Restart existing stopped container, or create a new one
-  const existing = findContainer(name);
   if (existing) {
+    ensureContainerMatchesConfig(name, args);
+    if (args.log) {
+      await ensureProxy(args.port);
+    }
     console.log(`\nRestarting container ${name}...`);
-    execSync(`podman start ${name}`, { stdio: "ignore" });
+    execFileSync("podman", ["start", name], { stdio: "ignore" });
   } else {
+    if (args.log) {
+      await ensureProxy(args.port);
+    }
     console.log(`\nCreating container ${name}...`);
     console.log(`  Workspace: ${workspace}`);
     if (args.log) console.log(`  Logging:   :${args.port}`);
@@ -176,7 +255,7 @@ async function cmdUp(args) {
       log: args.log,
     });
 
-    execSync(`podman run ${runArgs.map(a => `'${a}'`).join(" ")}`, { stdio: "ignore" });
+    execFileSync("podman", ["run", ...runArgs], { stdio: "ignore" });
   }
 
   // Wait for container to be running
@@ -211,7 +290,7 @@ function cmdDown(args) {
   }
 
   console.log(`Stopping ${name}...`);
-  execSync(`podman stop ${name}`, { stdio: "inherit" });
+  execFileSync("podman", ["stop", name], { stdio: "inherit" });
 }
 
 function cmdRm(args) {
@@ -227,7 +306,7 @@ function cmdRm(args) {
   }
 
   console.log(`Removing ${name}...`);
-  execSync(`podman rm ${name}`, { stdio: "inherit" });
+  execFileSync("podman", ["rm", name], { stdio: "inherit" });
 }
 
 function cmdShell(args) {
