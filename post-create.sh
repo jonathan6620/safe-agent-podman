@@ -8,9 +8,14 @@ sudo -E bash /setup/firewall.sh || echo "WARNING: Firewall setup failed (missing
 CLAUDE_DIR="${HOME}/.claude"
 mkdir -p "${CLAUDE_DIR}"
 
-# Settings: model + bypassPermissions
+# Settings: model + permissions mode
 CLAUDE_MODEL="${CLAUDE_MODEL:-opus}"
-echo '{"model":"'"${CLAUDE_MODEL}"'","permissions":{"defaultMode":"bypassPermissions"}}' \
+if [ "${DEVP_BYPASS_PERMISSIONS:-}" = "1" ]; then
+  PERM_MODE="bypassPermissions"
+else
+  PERM_MODE="default"
+fi
+echo '{"model":"'"${CLAUDE_MODEL}"'","permissions":{"defaultMode":"'"${PERM_MODE}"'"}}' \
   > "${CLAUDE_DIR}/settings.json"
 
 # Set bat theme based on Claude theme preference
@@ -32,4 +37,4 @@ claude -p "ok" --dangerously-skip-permissions > /dev/null 2>&1 || true
 
 echo "Claude Code sandbox ready"
 echo "  Model:   ${CLAUDE_MODEL}"
-echo "  Perms:   bypassPermissions"
+echo "  Perms:   ${PERM_MODE}"

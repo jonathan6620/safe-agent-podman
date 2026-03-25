@@ -25,8 +25,8 @@ Commands:
 Options:
   --image IMAGE       Container image (default: claude-sandbox)
   --model MODEL       Claude model (e.g. sonnet, opus, claude-sonnet-4-6)
-  --allow-host HOST   Allow network access to HOST (repeatable)
-  --no-firewall       Disable firewall (full network access)
+  --bypass            Enable bypassPermissions (default: off)
+  --allow-host HOST   Restrict network to Anthropic + HOST (repeatable)
   --log               Enable API call logging via host proxy
   --port PORT         Proxy port (default: 8080)
   -h, --help          Show this help
@@ -38,7 +38,7 @@ function die(msg) {
 }
 
 function parseArgs(argv) {
-  const args = { command: null, rest: [], port: 8080, image: "claude-sandbox", model: null, allowHosts: [], noFirewall: false, log: false };
+  const args = { command: null, rest: [], port: 8080, image: "claude-sandbox", model: null, allowHosts: [], bypass: false, log: false };
   let i = 0;
   while (i < argv.length) {
     const a = argv[i];
@@ -50,8 +50,8 @@ function parseArgs(argv) {
       args.model = argv[++i];
     } else if (a === "--allow-host") {
       args.allowHosts.push(argv[++i]);
-    } else if (a === "--no-firewall") {
-      args.noFirewall = true;
+    } else if (a === "--bypass") {
+      args.bypass = true;
     } else if (a === "--log") {
       args.log = true;
     } else if (a === "-h" || a === "--help") {
@@ -159,7 +159,7 @@ async function cmdUp(args) {
     image: args.image,
     model: args.model,
     allowHosts: args.allowHosts,
-    noFirewall: args.noFirewall,
+    bypass: args.bypass,
     log: args.log,
   });
 

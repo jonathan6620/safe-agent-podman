@@ -60,8 +60,8 @@ Commands:
 Options:
   --image IMAGE       Container image (default: claude-sandbox)
   --model MODEL       Claude model (default: opus)
-  --allow-host HOST   Allow network access to HOST (repeatable)
-  --no-firewall       Disable firewall (full network access)
+  --bypass            Enable bypassPermissions (default: off)
+  --allow-host HOST   Restrict network to Anthropic + HOST (repeatable)
   --log               Enable API call logging via host proxy
   --port PORT         Proxy port (default: 8080)
 ```
@@ -69,14 +69,14 @@ Options:
 ### Examples
 
 ```bash
-# Sandboxed -- only Anthropic endpoints reachable
-devp up ~/sketchy-repo
+# Full network access (default)
+devp up ~/my-project
 
-# Allow GitHub access for MCP/tool use
+# With bypassPermissions enabled
+devp up --bypass ~/trusted-project
+
+# Restrict network to Anthropic + GitHub only
 devp up --allow-host github.com --allow-host api.github.com ~/project
-
-# Full network access (no firewall)
-devp up --no-firewall ~/trusted-project
 
 # Use a specific model
 devp up --model sonnet ~/project
@@ -119,10 +119,10 @@ The shell launcher supports the same options:
 
 ## Security model
 
-1. **Network isolation** -- iptables allows only Anthropic endpoints (`api.anthropic.com`, `platform.claude.com`) by default. All other outbound traffic is dropped. Use `--allow-host` to whitelist domains or `--no-firewall` to disable.
-2. **Mounted credentials** -- `~/.claude/.credentials.json` mounted read-only, `~/.claude.json` writable (for workspace trust). Firewall prevents exfiltration to non-Anthropic hosts.
-3. **Rootless Podman** -- no Docker daemon, no root. Runs as your host user via `--userns=keep-id`.
-4. **bypassPermissions in a sandbox** -- Claude Code runs without prompts; the container is the security boundary.
+1. **Rootless Podman** -- no Docker daemon, no root. Runs as your host user via `--userns=keep-id`.
+2. **Mounted credentials** -- `~/.claude/.credentials.json` mounted read-only, `~/.claude.json` writable (for workspace trust).
+3. **Network firewall (opt-in)** -- use `--allow-host` to restrict outbound traffic to Anthropic + specified domains. Without it, network is open.
+4. **bypassPermissions (opt-in)** -- use `--bypass` to enable. Without it, Claude Code uses default permission prompts.
 
 ## API call logging
 
@@ -149,12 +149,13 @@ Auth is read from `~/.claude/.credentials.json` and `~/.claude.json` automatical
 
 ### Container-side (set automatically)
 
-| Variable              | Description                                           |
-| --------------------- | ----------------------------------------------------- |
-| `CLAUDE_MODEL`        | Model alias (default: opus, override: `--model`)      |
-| `DEVP_ALLOW_HOSTS`    | Comma-separated extra allowed domains                 |
-| `DEVP_NO_FIREWALL`    | Set to 1 to skip firewall rules                       |
-| `CLAUDE_PROXY_PORT`   | Proxy port for firewall rules (set with `--log`)      |
+| Variable                  | Description                                           |
+| ------------------------- | ----------------------------------------------------- |
+| `CLAUDE_MODEL`            | Model alias (default: opus, override: `--model`)      |
+| `DEVP_BYPASS_PERMISSIONS` | Set to 1 for bypassPermissions (set with `--bypass`)  |
+| `DEVP_ALLOW_HOSTS`        | Comma-separated allowed domains (enables firewall)    |
+| `DEVP_NO_FIREWALL`        | Set to 1 when no `--allow-host` (open network)        |
+| `CLAUDE_PROXY_PORT`       | Proxy port for firewall rules (set with `--log`)      |
 
 ## Inspired by
 

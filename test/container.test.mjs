@@ -91,4 +91,37 @@ describe("buildArgs", () => {
     });
     assert.ok(!args.some((a) => a.startsWith("CLAUDE_MODEL=")));
   });
+
+  it("disables firewall by default (no --allow-host)", () => {
+    const args = buildArgs({
+      workspace: "/home/user/project",
+      proxyPort: 8080,
+      name: "devp-project",
+      image: "claude-sandbox",
+    });
+    assert.ok(args.some((a) => a === "DEVP_NO_FIREWALL=1"));
+  });
+
+  it("enables firewall when --allow-host is used", () => {
+    const args = buildArgs({
+      workspace: "/home/user/project",
+      proxyPort: 8080,
+      name: "devp-project",
+      image: "claude-sandbox",
+      allowHosts: ["github.com"],
+    });
+    assert.ok(!args.some((a) => a === "DEVP_NO_FIREWALL=1"));
+    assert.ok(args.some((a) => a === "DEVP_ALLOW_HOSTS=github.com"));
+  });
+
+  it("sets bypass permissions when --bypass is used", () => {
+    const args = buildArgs({
+      workspace: "/home/user/project",
+      proxyPort: 8080,
+      name: "devp-project",
+      image: "claude-sandbox",
+      bypass: true,
+    });
+    assert.ok(args.some((a) => a === "DEVP_BYPASS_PERMISSIONS=1"));
+  });
 });
