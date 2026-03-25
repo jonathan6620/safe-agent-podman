@@ -2,6 +2,8 @@
 
 A Podman-based sandbox for running Claude Code with `bypassPermissions` safely enabled. The container's firewall restricts network access to Anthropic endpoints only, preventing credential exfiltration while allowing full tool use.
 
+For an OpenAI Codex variant built on the same container model, see [README.codex.md](README.codex.md) and use `devq`.
+
 ## Architecture
 
 ```
@@ -41,6 +43,24 @@ devp build
 # 3. Run (uses your Claude OAuth session automatically)
 devp up ~/my-project
 ```
+
+## Codex variant
+
+Use `devq` for the OpenAI Codex sibling workflow. It builds a separate `codex-sandbox` image, reuses the same Podman/firewall model, and mounts host Codex auth from `~/.codex/auth.json`.
+
+```bash
+# 1. Install both CLIs
+npm link
+
+# 2. Log Codex in on the host
+codex login
+
+# 3. Build and run the Codex image
+devq build
+devq up ~/my-project
+```
+
+`devq` supports the same network flags as `devp` (`--safe-network`, `--allow-host`) and defaults to running Codex in bypass mode inside the container boundary. See [README.codex.md](README.codex.md) for the full Codex-specific details.
 
 ## devp CLI
 

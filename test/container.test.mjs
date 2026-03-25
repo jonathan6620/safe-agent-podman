@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildArgs,
+  CLAUDE_API_DOMAINS,
   containerConfig,
   containerName,
   diffContainerConfig,
@@ -57,6 +58,18 @@ describe("buildArgs", () => {
       image: "claude-sandbox",
     });
     assert.ok(!withoutLog.some((a) => a.startsWith("CLAUDE_PROXY_PORT=")));
+  });
+
+  it("sets Anthropic domains for the firewall", () => {
+    const args = buildArgs({
+      workspace: "/home/user/project",
+      proxyPort: 8080,
+      name: "devp-project",
+      image: "claude-sandbox",
+    });
+    assert.ok(
+      args.some((a) => a === `DEVP_API_DOMAINS=${CLAUDE_API_DOMAINS.join(",")}`)
+    );
   });
 
   it("mounts host credentials read-only when file exists", () => {
@@ -184,6 +197,7 @@ describe("container config helpers", () => {
         "ANTHROPIC_BASE_URL",
         "CLAUDE_PROXY_PORT",
         "CLAUDE_MODEL",
+        "DEVP_API_DOMAINS",
         "DEVP_SAFE_NETWORK",
       ]
     );

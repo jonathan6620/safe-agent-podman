@@ -3,40 +3,36 @@
 import { spawn, execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { getAuthToken } from "../lib/auth.mjs";
-import { checkProxy } from "../lib/proxy-check.mjs";
+import { hasCodexAuth } from "../lib/codex-auth.mjs";
 import {
   buildArgs,
   containerConfig,
   containerName,
   diffContainerConfig,
   envListToMap,
-} from "../lib/container.mjs";
+} from "../lib/codex-container.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 
-const USAGE = `Usage: devp <command> [options]
+const USAGE = `Usage: devq <command> [options]
 
 Commands:
-  up [PATH]        Start proxy + container (default: current dir)
+  up [PATH]        Start Codex container (default: current dir)
   down             Stop the running container
   rm               Remove a stopped container
   shell            Open a shell in the running container
   exec CMD...      Run a command in the running container
-  rebuild          Rebuild the container image
-  status           Show proxy and container status
-  build            Build the container image
-  logs             Tail proxy logs
+  rebuild          Rebuild the Codex container image
+  status           Show auth and container status
+  build            Build the Codex container image
 
 Options:
-  --image IMAGE       Container image (default: claude-sandbox)
-  --model MODEL       Claude model (e.g. sonnet, opus, claude-sonnet-4-6)
-  --no-bypass         Disable bypassPermissions (default: on)
-  --allow-host HOST   Restrict network to Anthropic + HOST (repeatable)
+  --image IMAGE       Container image (default: codex-sandbox)
+  --model MODEL       Codex model (for example gpt-5.1-codex-max or codex-mini-latest)
+  --no-bypass         Keep Codex sandbox/approval controls enabled
+  --allow-host HOST   Restrict network to OpenAI + HOST (repeatable)
   --safe-network      Allow package managers (apt, npm, pip, etc.) through firewall
-  --log               Enable API call logging via host proxy
-  --port PORT         Proxy port (default: 8080)
   -h, --help          Show this help
 `;
 
@@ -46,13 +42,20 @@ function die(msg) {
 }
 
 function parseArgs(argv) {
-  const args = { command: null, rest: [], port: 8080, image: "claude-sandbox", model: null, allowHosts: [], bypass: true, safeNetwork: false, log: false };
+  const args = {
+    command: null,
+    rest: [],
+    image: "codex-sandbox",
+    model: null,
+    allowHosts: [],
+    bypass: true,
+    safeNetwork: false,
+  };
+
   let i = 0;
   while (i < argv.length) {
     const a = argv[i];
-    if (a === "--port") {
-      args.port = parseInt(argv[++i], 10);
-    } else if (a === "--image") {
+    if (a === "--image") {
       args.image = argv[++i];
     } else if (a === "--model") {
       args.model = argv[++i];
@@ -62,8 +65,6 @@ function parseArgs(argv) {
       args.bypass = false;
     } else if (a === "--safe-network") {
       args.safeNetwork = true;
-    } else if (a === "--log") {
-      args.log = true;
     } else if (a === "-h" || a === "--help") {
       console.log(USAGE);
       process.exit(0);
@@ -74,6 +75,7 @@ function parseArgs(argv) {
     }
     i++;
   }
+
   return args;
 }
 
@@ -155,17 +157,20 @@ function firewallLabel({ allowHosts, safeNetwork }) {
   return "disabled (full access)";
 }
 
+function permissionsLabel(bypass) {
+  if (bypass) {
+    return "danger-full-access (container boundary)";
+  }
+  return "codex-managed";
+}
+
 function printStartupConfig(args, workspace) {
-  const model = args.model ?? "opus";
-  const permissions = args.bypass ? "bypassPermissions" : "default";
+  const model = args.model ?? "default";
 
   console.log(`  Workspace:   ${workspace}`);
   console.log(`  Firewall:    ${firewallLabel(args)}`);
   console.log(`  Model:       ${model}`);
-  console.log(`  Permissions: ${permissions}`);
-  if (args.log) {
-    console.log(`  Logging:     :${args.port}`);
-  }
+  console.log(`  Permissions: ${permissionsLabel(args.bypass)}`);
 }
 
 function ensureContainerMatchesConfig(name, args) {
@@ -176,69 +181,23 @@ function ensureContainerMatchesConfig(name, args) {
 
   const desired = containerConfig({
     image: args.image,
-    proxyPort: args.port,
     model: args.model,
     allowHosts: args.allowHosts,
     bypass: args.bypass,
     safeNetwork: args.safeNetwork,
-    log: args.log,
   });
   const diffs = diffContainerConfig(actual, desired);
 
   if (diffs.length > 0) {
     const rmCommand = args.rest[0]
-      ? `devp rm ${shellQuote(args.rest[0])}`
-      : "devp rm";
+      ? `devq rm ${shellQuote(args.rest[0])}`
+      : "devq rm";
     die(
       `Container ${name} was created with different settings.\n\n` +
         `  ${formatConfigDiffs(diffs)}\n\n` +
-        `Remove it with '${rmCommand}' and run 'devp up' again.`
+        `Remove it with '${rmCommand}' and run 'devq up' again.`
     );
   }
-}
-
-async function startProxy(port) {
-  const proxyScript = path.join(ROOT, "proxy.py");
-  const logDir = path.join(ROOT, "logs");
-
-  const proxy = spawn(
-    "python3",
-    [proxyScript, "--port", String(port), "--log-dir", logDir],
-    {
-      stdio: ["ignore", "inherit", "inherit"],
-      detached: true,
-    }
-  );
-  proxy.unref();
-
-  // Wait for proxy to be ready
-  for (let attempt = 0; attempt < 10; attempt++) {
-    await new Promise((r) => setTimeout(r, 300));
-    if (await checkProxy(port)) {
-      return proxy.pid;
-    }
-  }
-  die("Proxy failed to start within 3 seconds");
-}
-
-async function ensureProxy(port) {
-  if (await checkProxy(port)) {
-    console.log(`Proxy already running on :${port}`);
-    return null;
-  }
-
-  // Check auth before starting proxy
-  const token = getAuthToken();
-  if (!token) {
-    die(
-      "No auth found. Log in with 'claude' first, or set ANTHROPIC_API_KEY."
-    );
-  }
-
-  console.log(`Starting auth proxy on :${port}...`);
-  const pid = await startProxy(port);
-  console.log(`Proxy started (PID ${pid})`);
-  return pid;
 }
 
 async function cmdUp(args) {
@@ -246,46 +205,42 @@ async function cmdUp(args) {
   const name = containerName(workspace);
   const existing = findContainer(name);
 
+  if (!hasCodexAuth()) {
+    die(
+      "No Codex auth found. Run 'codex login' on the host first, or set OPENAI_API_KEY."
+    );
+  }
+
   if (isContainerRunning(name)) {
     console.log(`Container ${name} is already running. Attaching...`);
     attachShell(name);
     return;
   }
 
-  // Restart existing stopped container, or create a new one
   if (existing) {
     ensureContainerMatchesConfig(name, args);
-    if (args.log) {
-      await ensureProxy(args.port);
-    }
     console.log(`\nRestarting container ${name}...`);
     printStartupConfig(args, workspace);
     console.log("");
     execFileSync("podman", ["start", name], { stdio: "ignore" });
   } else {
-    if (args.log) {
-      await ensureProxy(args.port);
-    }
     console.log(`\nCreating container ${name}...`);
     printStartupConfig(args, workspace);
     console.log("");
 
     const runArgs = buildArgs({
       workspace,
-      proxyPort: args.port,
       name,
       image: args.image,
       model: args.model,
       allowHosts: args.allowHosts,
       bypass: args.bypass,
       safeNetwork: args.safeNetwork,
-      log: args.log,
     });
 
     execFileSync("podman", ["run", ...runArgs], { stdio: "ignore" });
   }
 
-  // Wait for container to be running
   for (let i = 0; i < 10; i++) {
     if (isContainerRunning(name)) break;
     await new Promise((r) => setTimeout(r, 300));
@@ -329,7 +284,7 @@ function cmdRm(args) {
   }
 
   if (isContainerRunning(name)) {
-    die(`Container ${name} is still running. Use 'devp down' first.`);
+    die(`Container ${name} is still running. Use 'devq down' first.`);
   }
 
   console.log(`Removing ${name}...`);
@@ -341,7 +296,7 @@ function cmdShell(args) {
   const name = containerName(workspace);
 
   if (!isContainerRunning(name)) {
-    die(`Container ${name} is not running. Use 'devp up' first.`);
+    die(`Container ${name} is not running. Use 'devq up' first.`);
   }
 
   const result = spawn("podman", ["exec", "-it", name, "zsh"], {
@@ -355,10 +310,10 @@ function cmdExec(args) {
   const name = containerName(workspace);
 
   if (!isContainerRunning(name)) {
-    die(`Container ${name} is not running. Use 'devp up' first.`);
+    die(`Container ${name} is not running. Use 'devq up' first.`);
   }
   if (args.rest.length === 0) {
-    die("No command specified. Usage: devp exec <command>");
+    die("No command specified. Usage: devq exec <command>");
   }
 
   const result = spawn("podman", ["exec", "-it", name, ...args.rest], {
@@ -369,10 +324,13 @@ function cmdExec(args) {
 
 function cmdRebuild(args) {
   console.log(`Building ${args.image}...`);
-  const build = spawn("podman", ["build", "-t", args.image, ROOT], {
-    stdio: ["inherit", "inherit", "pipe"],
-  });
-  // Filter out rootless podman capability warnings
+  const build = spawn(
+    "podman",
+    ["build", "-f", path.join(ROOT, "Dockerfile.codex"), "-t", args.image, ROOT],
+    {
+      stdio: ["inherit", "inherit", "pipe"],
+    }
+  );
   build.stderr.on("data", (data) => {
     const lines = data.toString().split("\n");
     for (const line of lines) {
@@ -388,23 +346,12 @@ function cmdBuild(args) {
   cmdRebuild(args);
 }
 
-async function cmdStatus(args) {
+function cmdStatus() {
   const workspace = process.cwd();
   const name = containerName(workspace);
 
-  // Auth
-  const token = getAuthToken();
-  if (token) {
-    console.log(`Auth:      OK (${token.slice(0, 10)}...${token.slice(-4)})`);
-  } else {
-    console.log("Auth:      NOT FOUND");
-  }
+  console.log(`Auth:      ${hasCodexAuth() ? "OK" : "NOT FOUND"}`);
 
-  // Proxy
-  const proxyUp = await checkProxy(args.port);
-  console.log(`Proxy:     ${proxyUp ? `running on :${args.port}` : "not running"}`);
-
-  // Container
   const running = isContainerRunning(name);
   const exists = findContainer(name);
   if (running) {
@@ -416,13 +363,6 @@ async function cmdStatus(args) {
   }
 }
 
-function cmdLogs() {
-  const logFile = path.join(ROOT, "logs", "calls.jsonl");
-  const result = spawn("tail", ["-f", logFile], { stdio: "inherit" });
-  result.on("exit", (code) => process.exit(code ?? 0));
-}
-
-// Main
 const args = parseArgs(process.argv.slice(2));
 
 const commands = {
@@ -434,7 +374,6 @@ const commands = {
   rebuild: cmdRebuild,
   build: cmdBuild,
   status: cmdStatus,
-  logs: cmdLogs,
 };
 
 if (!args.command) {

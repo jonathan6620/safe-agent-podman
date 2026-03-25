@@ -4,7 +4,8 @@
   "description": "Podman-based sandbox for Claude Code with host auth proxy",
   "type": "module",
   "bin": {
-    "devp": "./bin/devp.mjs"
+    "devp": "./bin/devp.mjs",
+    "devq": "./bin/devq.mjs"
   },
   "scripts": {
     "test": "node --test 'test/*.test.mjs'"

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Lock down container networking:
-# - Allow traffic to Anthropic API endpoints (for Claude Code auth + API)
+# - Allow traffic to agent API endpoints via DEVP_API_DOMAINS
 # - Allow traffic to host proxy (for logging)
 # - Allow extra hosts via DEVP_ALLOW_HOSTS (comma-separated)
 # - Allow DNS resolution
@@ -43,14 +43,9 @@ fi
 
 PROXY_PORT="${CLAUDE_PROXY_PORT:-8080}"
 
-# Allowed Anthropic domains
-ANTHROPIC_DOMAINS=(
-  "api.anthropic.com"
-  "platform.claude.com"
-  "mcp-proxy.anthropic.com"
-  "status.anthropic.com"
-  "statsigapi.net"
-)
+API_DOMAINS_DEFAULT="api.anthropic.com,platform.claude.com,mcp-proxy.anthropic.com,status.anthropic.com,statsigapi.net"
+API_DOMAINS_RAW="${DEVP_API_DOMAINS:-${API_DOMAINS_DEFAULT}}"
+IFS=',' read -ra API_DOMAINS <<< "$API_DOMAINS_RAW"
 
 # Flush existing rules
 iptables -F OUTPUT 2>/dev/null || true
@@ -73,8 +68,10 @@ if [ -n "$HOST_IP" ]; then
   echo "Firewall: proxy allowed at $HOST_IP:$PROXY_PORT"
 fi
 
-# Allow Anthropic domains (IPv4 only -- iptables doesn't handle IPv6)
-for domain in "${ANTHROPIC_DOMAINS[@]}"; do
+# Allow agent API domains (IPv4 only -- iptables doesn't handle IPv6)
+for domain in "${API_DOMAINS[@]}"; do
+  domain=$(echo "$domain" | xargs)
+  [ -n "$domain" ] || continue
   ips=$(getent ahostsv4 "$domain" 2>/dev/null | awk '{print $1}' | sort -u || true)
   for ip in $ips; do
     iptables -A OUTPUT -d "$ip" -p tcp --dport 443 -j ACCEPT
