@@ -10,7 +10,7 @@ mkdir -p "${CLAUDE_DIR}"
 
 # Settings: model + permissions mode
 CLAUDE_MODEL="${CLAUDE_MODEL:-opus}"
-if [ "${DEVP_BYPASS_PERMISSIONS:-}" = "1" ]; then
+if [ "${DEVP_BYPASS_PERMISSIONS:-1}" = "1" ]; then
   PERM_MODE="bypassPermissions"
 else
   PERM_MODE="default"
