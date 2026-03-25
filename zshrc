@@ -15,5 +15,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 # uv (Python package manager)
 eval "$(uv generate-shell-completion zsh 2>/dev/null)" || true
+alias python3='uv run python3'
+alias ipython='uv run --with ipython ipython3'
 
 # BAT_THEME is set dynamically by post-create.sh at first boot
