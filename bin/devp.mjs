@@ -27,7 +27,6 @@ Options:
   --model MODEL       Claude model (e.g. sonnet, opus, claude-sonnet-4-6)
   --allow-host HOST   Allow network access to HOST (repeatable)
   --no-firewall       Disable firewall (full network access)
-  --proxy-auth        No credentials in container; proxy injects auth (+ logging)
   --log               Enable API call logging via host proxy
   --port PORT         Proxy port (default: 8080)
   -h, --help          Show this help
@@ -39,7 +38,7 @@ function die(msg) {
 }
 
 function parseArgs(argv) {
-  const args = { command: null, rest: [], port: 8080, image: "claude-sandbox", model: null, allowHosts: [], noFirewall: false, log: false, proxyAuth: false };
+  const args = { command: null, rest: [], port: 8080, image: "claude-sandbox", model: null, allowHosts: [], noFirewall: false, log: false };
   let i = 0;
   while (i < argv.length) {
     const a = argv[i];
@@ -55,9 +54,6 @@ function parseArgs(argv) {
       args.noFirewall = true;
     } else if (a === "--log") {
       args.log = true;
-    } else if (a === "--proxy-auth") {
-      args.proxyAuth = true;
-      args.log = true; // proxy-auth implies logging
     } else if (a === "-h" || a === "--help") {
       console.log(USAGE);
       process.exit(0);
@@ -165,7 +161,6 @@ async function cmdUp(args) {
     allowHosts: args.allowHosts,
     noFirewall: args.noFirewall,
     log: args.log,
-    proxyAuth: args.proxyAuth,
   });
 
   const result = spawn("podman", ["run", ...runArgs], {

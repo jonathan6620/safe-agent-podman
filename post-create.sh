@@ -20,25 +20,16 @@ else
   CLAUDE_THEME="dark"
 fi
 if [ "$CLAUDE_THEME" = "light" ]; then
-  export BAT_THEME="GitHub"
+  BAT_THEME="GitHub"
 else
-  export BAT_THEME="Monokai Extended"
+  BAT_THEME="Monokai Extended"
 fi
 echo "export BAT_THEME=\"${BAT_THEME}\"" >> "${HOME}/.zshrc" 2>/dev/null || true
 echo "export BAT_THEME=\"${BAT_THEME}\"" >> "${HOME}/.bashrc" 2>/dev/null || true
 
-# Seed workspace trust (skip in proxy-auth mode -- no OAuth, uses --bare)
-if [ "${DEVP_PROXY_AUTH:-}" != "1" ]; then
-  claude -p "ok" --dangerously-skip-permissions > /dev/null 2>&1 || true
-fi
-
-# Status
-AUTH_MODE="mounted credentials"
-if [ "${DEVP_PROXY_AUTH:-}" = "1" ]; then
-  AUTH_MODE="proxy-injected (no creds in container)"
-fi
+# Seed workspace trust by running claude once in print mode
+claude -p "ok" --dangerously-skip-permissions > /dev/null 2>&1 || true
 
 echo "Claude Code sandbox ready"
 echo "  Model:   ${CLAUDE_MODEL}"
-echo "  Auth:    ${AUTH_MODE}"
 echo "  Perms:   bypassPermissions"

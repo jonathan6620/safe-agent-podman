@@ -62,7 +62,6 @@ Options:
   --model MODEL       Claude model (default: opus)
   --allow-host HOST   Allow network access to HOST (repeatable)
   --no-firewall       Disable firewall (full network access)
-  --proxy-auth        No credentials in container; proxy injects auth (+ logging)
   --log               Enable API call logging via host proxy
   --port PORT         Proxy port (default: 8080)
 ```
@@ -72,9 +71,6 @@ Options:
 ```bash
 # Sandboxed -- only Anthropic endpoints reachable
 devp up ~/sketchy-repo
-
-# No credentials in container -- proxy handles auth
-devp up --proxy-auth ~/sketchy-repo
 
 # Allow GitHub access for MCP/tool use
 devp up --allow-host github.com --allow-host api.github.com ~/project
@@ -123,23 +119,10 @@ The shell launcher supports the same options:
 
 ## Security model
 
-Two auth modes are available:
-
-**Default** (`devp up`) -- host credentials mounted into container:
-- `~/.claude/.credentials.json` mounted read-only, `~/.claude.json` writable
-- Claude Code authenticates directly with Anthropic
-- Firewall prevents exfiltration to non-Anthropic hosts
-
-**Proxy auth** (`devp up --proxy-auth`) -- no credentials in container:
-- No credential files mounted at all
-- Host proxy intercepts API calls and injects auth from `~/.claude/.credentials.json`
-- Claude Code runs in `--bare` mode (API key auth only, no OAuth)
-- Maximum isolation: container never sees the token
-
-Both modes share:
-1. **Network isolation** -- iptables allows only Anthropic endpoints by default. Use `--allow-host` to whitelist domains or `--no-firewall` to disable.
-2. **Rootless Podman** -- no Docker daemon, no root. Runs as your host user via `--userns=keep-id`.
-3. **bypassPermissions in a sandbox** -- Claude Code runs without prompts; the container is the security boundary.
+1. **Network isolation** -- iptables allows only Anthropic endpoints (`api.anthropic.com`, `platform.claude.com`) by default. All other outbound traffic is dropped. Use `--allow-host` to whitelist domains or `--no-firewall` to disable.
+2. **Mounted credentials** -- `~/.claude/.credentials.json` mounted read-only, `~/.claude.json` writable (for workspace trust). Firewall prevents exfiltration to non-Anthropic hosts.
+3. **Rootless Podman** -- no Docker daemon, no root. Runs as your host user via `--userns=keep-id`.
+4. **bypassPermissions in a sandbox** -- Claude Code runs without prompts; the container is the security boundary.
 
 ## API call logging
 
@@ -171,8 +154,6 @@ Auth is read from `~/.claude/.credentials.json` and `~/.claude.json` automatical
 | `CLAUDE_MODEL`        | Model alias (default: opus, override: `--model`)      |
 | `DEVP_ALLOW_HOSTS`    | Comma-separated extra allowed domains                 |
 | `DEVP_NO_FIREWALL`    | Set to 1 to skip firewall rules                       |
-| `DEVP_PROXY_AUTH`     | Set to 1 for proxy-auth mode (no creds in container)  |
-| `ANTHROPIC_BASE_URL`  | Proxy URL (set automatically in proxy-auth mode)      |
 | `CLAUDE_PROXY_PORT`   | Proxy port for firewall rules (set with `--log`)      |
 
 ## Inspired by
