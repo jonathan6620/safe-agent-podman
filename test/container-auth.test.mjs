@@ -72,6 +72,14 @@ describe("container auth", { skip: !podmanAvailable() && "podman or image not av
     assert.equal(settings.permissions.defaultMode, "bypassPermissions");
   });
 
+  it("post-create writes BAT_THEME into .zshrc", () => {
+    const out = podmanRun(
+      ["CLAUDE_PROXY_PORT=8080"],
+      "bash /setup/post-create.sh >/dev/null 2>&1; grep '^export BAT_THEME=' ~/.zshrc"
+    );
+    assert.match(out, /^export BAT_THEME="(GitHub|Monokai Extended)"$/);
+  });
+
   it("entrypoint runs setup and executes command", () => {
     const out = podmanRun(
       ["CLAUDE_PROXY_PORT=8080"],

@@ -1,6 +1,17 @@
 #!/bin/bash
 set -euo pipefail
 
+set_bat_theme() {
+  local theme="$1"
+  if grep -q '^export BAT_THEME=' "${HOME}/.zshrc" 2>/dev/null; then
+    sed -i "s|^export BAT_THEME=.*|export BAT_THEME=\"${theme}\"|" "${HOME}/.zshrc"
+  elif grep -q '^# BAT_THEME' "${HOME}/.zshrc" 2>/dev/null; then
+    sed -i "s|^# BAT_THEME.*|export BAT_THEME=\"${theme}\"|" "${HOME}/.zshrc"
+  else
+    echo "export BAT_THEME=\"${theme}\"" >> "${HOME}/.zshrc"
+  fi
+}
+
 # Refresh apt package lists (cleared during image build to save space)
 sudo apt-get update -qq 2>/dev/null || echo "WARNING: apt-get update failed (network restricted?)"
 
@@ -32,12 +43,7 @@ if [ "$CLAUDE_THEME" = "light" ]; then
 else
   BAT_THEME="Monokai Extended"
 fi
-# Write BAT_THEME into .zshrc (replace placeholder or append)
-if grep -q '^# BAT_THEME' "${HOME}/.zshrc" 2>/dev/null; then
-  sed -i "s|^# BAT_THEME.*|export BAT_THEME=\"${BAT_THEME}\"|" "${HOME}/.zshrc"
-else
-  echo "export BAT_THEME=\"${BAT_THEME}\"" >> "${HOME}/.zshrc"
-fi
+set_bat_theme "${BAT_THEME}"
 
 # Seed workspace trust by running claude once in print mode
 claude -p "ok" --dangerously-skip-permissions > /dev/null 2>&1 || true
