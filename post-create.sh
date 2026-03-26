@@ -45,6 +45,14 @@ else
 fi
 set_bat_theme "${BAT_THEME}"
 
+# Configure git identity from host (passed via GIT_USER_NAME / GIT_USER_EMAIL env vars)
+if [ -n "${GIT_USER_NAME:-}" ]; then
+  git config --global user.name "${GIT_USER_NAME}"
+fi
+if [ -n "${GIT_USER_EMAIL:-}" ]; then
+  git config --global user.email "${GIT_USER_EMAIL}"
+fi
+
 # Seed workspace trust by running claude once in print mode
 claude -p "ok" --dangerously-skip-permissions > /dev/null 2>&1 || true
 

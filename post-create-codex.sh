@@ -30,6 +30,14 @@ else
   PERM_MODE="codex-managed"
 fi
 
+# Configure git identity from host (passed via GIT_USER_NAME / GIT_USER_EMAIL env vars)
+if [ -n "${GIT_USER_NAME:-}" ]; then
+  git config --global user.name "${GIT_USER_NAME}"
+fi
+if [ -n "${GIT_USER_EMAIL:-}" ]; then
+  git config --global user.email "${GIT_USER_EMAIL}"
+fi
+
 echo "Codex sandbox ready"
 echo "  Model:   ${CODEX_MODEL:-default}"
 echo "  Perms:   ${PERM_MODE}"
