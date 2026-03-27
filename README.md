@@ -170,6 +170,50 @@ The shell launcher supports the same options:
 ./run.sh --workspace ~/project  # no firewall (default)
 ```
 
+## VS Code integration
+
+You can attach VS Code to a running `devp` container for a full IDE experience.
+
+### Prerequisites
+
+- [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) extension installed in VS Code
+- Podman socket enabled: `systemctl --user enable --now podman.socket`
+
+### Host setup
+
+Route VS Code (and the Docker CLI) to the rootless Podman socket by adding this to your `~/.zshrc` (or `~/.bashrc`):
+
+```bash
+export DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock
+```
+
+If Docker Engine is also installed, this prevents VS Code from connecting to the Docker daemon instead of Podman.
+
+### Attaching to a container
+
+1. Start the container as usual:
+   ```bash
+   devp up ~/my-project
+   ```
+2. In VS Code: `Ctrl+Shift+P` → **Dev Containers: Attach to Running Container...**
+3. Select the `devp-my-project` container
+4. Open `/workspace` as the folder
+
+The Claude Code extension (`anthropic.claude-code`) can be installed inside the container on first attach.
+
+### VS Code settings
+
+These settings should be configured in VS Code (`Ctrl+,`):
+
+| Setting | Value | Purpose |
+| ------- | ----- | ------- |
+| `dev.containers.dockerPath` | `docker` | Use Docker CLI (routed to Podman via `DOCKER_HOST`) |
+| `dev.containers.dockerSocketPath` | `/run/user/1000/podman/podman.sock` | Point to Podman socket |
+
+### Alternative: Dev Containers (Reopen in Container)
+
+The included `devcontainer.json` allows opening this repo directly in a container via `Ctrl+Shift+P` → **Dev Containers: Reopen in Container**. This is simpler but does not support `devp` features like `--safe-network`, `--allow-host`, or `--log`.
+
 ## Files
 
 | File                  | Purpose                                                   |
