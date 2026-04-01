@@ -122,6 +122,7 @@ podman run -d \
     --cap-add=SETUID \
     --cap-add=SETGID \
     --device=/dev/fuse \
+    --device=/dev/net/tun \
     --network=slirp4netns:allow_host_loopback=true \
     -e "CLAUDE_PROXY_PORT=${PROXY_PORT}" \
     -e "ANTHROPIC_BASE_URL=http://host.containers.internal:${PROXY_PORT}" \

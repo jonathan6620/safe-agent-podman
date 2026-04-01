@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     podman \
     python3 \
     ripgrep \
+    slirp4netns \
     tmux \
     uidmap \
     zsh \
