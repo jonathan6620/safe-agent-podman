@@ -10,6 +10,7 @@ import {
   containerConfig,
   containerName,
   copyHostConfig,
+  copyHostCredentials,
   diffContainerConfig,
   envListToMap,
 } from "../lib/container.mjs";
@@ -272,7 +273,7 @@ async function cmdUp(args) {
     printStartupConfig(args, workspace);
     console.log("");
 
-    const runArgs = buildArgs({
+    const createArgs = buildArgs({
       workspace,
       proxyPort: args.port,
       name,
@@ -284,7 +285,14 @@ async function cmdUp(args) {
       log: args.log,
     });
 
-    execFileSync("podman", ["run", ...runArgs], { stdio: "ignore" });
+    execFileSync("podman", ["create", ...createArgs], { stdio: "ignore" });
+
+    // Copy auth files before starting so the entrypoint sees them.
+    // Uses podman cp (not bind-mount) to get correct vscode ownership.
+    copyHostCredentials(name);
+    copyHostConfig(name);
+
+    execFileSync("podman", ["start", name], { stdio: "ignore" });
   }
 
   // Wait for container to be running
@@ -295,10 +303,6 @@ async function cmdUp(args) {
   if (!isContainerRunning(name)) {
     die(`Container ${name} failed to start. Check 'podman logs ${name}'.`);
   }
-
-  // Copy ~/.claude.json into the container (not bind-mounted to avoid
-  // truncation when the host rewrites the file).
-  copyHostConfig(name);
 
   attachShell(name);
 }

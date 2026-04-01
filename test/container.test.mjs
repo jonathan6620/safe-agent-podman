@@ -72,16 +72,14 @@ describe("buildArgs", () => {
     );
   });
 
-  it("mounts host credentials read-only when file exists", () => {
+  it("does not bind-mount credentials (copied via podman cp instead)", () => {
     const args = buildArgs({
       workspace: "/home/user/project",
       proxyPort: 8080,
       name: "devp-project",
       image: "claude-sandbox",
     });
-    // Credentials mount depends on whether host file exists
-    // Just verify no ANTHROPIC_API_KEY=proxy-managed is set
-    assert.ok(!args.some((a) => a === "ANTHROPIC_API_KEY=proxy-managed"));
+    assert.ok(!args.some((a) => a.includes(".credentials.json")));
   });
 
   it("mounts workspace at /workspace", () => {
@@ -194,14 +192,14 @@ describe("buildArgs", () => {
     assert.ok(!args.includes("claude-sandbox"));
   });
 
-  it("runs detached with correct name", () => {
+  it("has correct name (no -d flag, used with podman create)", () => {
     const args = buildArgs({
       workspace: "/home/user/project",
       proxyPort: 8080,
       name: "devp-myproject",
       image: "claude-sandbox",
     });
-    assert.ok(args.includes("-d"));
+    assert.ok(!args.includes("-d"));
     assert.ok(args.includes("--name=devp-myproject"));
   });
 

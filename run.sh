@@ -92,16 +92,9 @@ echo "Proxy running on :${PROXY_PORT}"
 echo ""
 
 # Launch container with podman
-# Mount host auth files read-only for Claude Code auth.
-# Network firewall prevents exfiltration -- container can only reach the proxy.
-CREDS_MOUNT=""
-if [ -f "${HOME}/.claude/.credentials.json" ]; then
-    CREDS_MOUNT="-v ${HOME}/.claude/.credentials.json:/home/vscode/.claude/.credentials.json:ro,Z"
-elif [ -n "${CREDS_TMPDIR}" ] && [ -f "${CREDS_TMPDIR}/.credentials.json" ]; then
-    CREDS_MOUNT="-v ${CREDS_TMPDIR}/.credentials.json:/home/vscode/.claude/.credentials.json:ro,Z"
-fi
-# NOTE: ~/.claude.json is copied after container start (not bind-mounted)
-# to avoid truncation when the host rewrites the file atomically.
+# Auth files (.credentials.json and .claude.json) are copied after create
+# via podman cp instead of bind-mounted. This avoids UID mismatch (host UID
+# != container vscode UID) and truncation issues.
 
 # Firewall: on when --allow-host is used, off by default
 NO_FIREWALL=""
@@ -109,7 +102,7 @@ if [ -z "${ALLOW_HOSTS}" ] && [ -z "${SAFE_NETWORK}" ]; then
     NO_FIREWALL="1"
 fi
 
-podman run -d \
+podman create \
     --name claude-sandbox \
     --userns=keep-id \
     --security-opt=label=disable \
@@ -129,15 +122,24 @@ podman run -d \
     ${ALLOW_HOSTS:+-e "DEVP_ALLOW_HOSTS=${ALLOW_HOSTS}"} \
     ${NO_FIREWALL:+-e "DEVP_NO_FIREWALL=1"} \
     ${SAFE_NETWORK:+-e "DEVP_SAFE_NETWORK=1"} \
-    ${CREDS_MOUNT} \
     -v "${WORKSPACE}:/workspace:Z" \
     -v "claude-sandbox-history:/commandhistory" \
     claude-sandbox
 
-# Copy ~/.claude.json into the container (avoids truncation from host writes)
+# Copy auth files before starting so the entrypoint sees them.
+# Uses podman cp (not bind-mount) to get correct vscode ownership.
+CREDS_FILE="${HOME}/.claude/.credentials.json"
+if [ -n "${CREDS_TMPDIR}" ] && [ -f "${CREDS_TMPDIR}/.credentials.json" ]; then
+    CREDS_FILE="${CREDS_TMPDIR}/.credentials.json"
+fi
+if [ -f "${CREDS_FILE}" ]; then
+    podman cp "${CREDS_FILE}" claude-sandbox:/home/vscode/.claude/.credentials.json
+fi
 if [ -f "${HOME}/.claude.json" ]; then
     podman cp "${HOME}/.claude.json" claude-sandbox:/home/vscode/.claude.json
 fi
+
+podman start claude-sandbox
 
 # Attach interactive shell
 podman exec -it claude-sandbox zsh

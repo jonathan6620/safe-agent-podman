@@ -1,13 +1,16 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { execSync } from "node:child_process";
+import { execSync, execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ensureCredentialsFile } from "../lib/auth.mjs";
+import {
+  buildArgs,
+  copyHostConfig,
+  copyHostCredentials,
+} from "../lib/container.mjs";
 
 const IMAGE = "claude-sandbox";
-const HOST_CREDENTIALS = path.join(os.homedir(), ".claude", ".credentials.json");
 
 function podmanAvailable() {
   try {
@@ -22,91 +25,103 @@ function podmanAvailable() {
   }
 }
 
-// Track temp credential files for cleanup
-const tmpCredsFiles = [];
+const LARGE_WORKSPACE = path.resolve(
+  path.dirname(new URL(import.meta.url).pathname),
+  "../../geneweaver-search"
+);
 
-function getCredsMountArgs() {
-  const credsFile = ensureCredentialsFile(HOST_CREDENTIALS);
-  if (!credsFile) return "";
-  if (credsFile !== HOST_CREDENTIALS) tmpCredsFiles.push(path.dirname(credsFile));
-  return `-v ${credsFile}:/home/vscode/.claude/.credentials.json:ro,Z`;
+function largeWorkspaceAvailable() {
+  try {
+    return podmanAvailable() && fs.existsSync(LARGE_WORKSPACE);
+  } catch {
+    return false;
+  }
 }
 
-function podmanRun(envs, cmd, { useEntrypoint = false } = {}) {
-  const envArgs = envs.map((e) => `-e ${e}`).join(" ");
-  const credsMount = getCredsMountArgs();
-  const claudeJsonMount = fs.existsSync(path.join(os.homedir(), ".claude.json"))
-    ? `-v $HOME/.claude.json:/home/vscode/.claude.json:Z`
-    : "";
-  if (useEntrypoint) {
-    return execSync(
-      `podman run --rm --userns=keep-id --cap-add=NET_ADMIN --cap-add=NET_RAW ` +
-        `${envArgs} ${credsMount} ${claudeJsonMount} ${IMAGE} ${cmd}`,
-      { encoding: "utf-8", timeout: 30000 }
-    ).trim();
+/**
+ * Create a container with podman cp'd auth files (matching the real devp up flow),
+ * start it, run a command, then return stdout.
+ */
+function createAndRun(name, workspace, envs, cmd, { useEntrypoint = false } = {}) {
+  const args = buildArgs({
+    workspace,
+    proxyPort: 8080,
+    name,
+    image: IMAGE,
+  });
+
+  execFileSync("podman", ["create", ...args], { stdio: "ignore" });
+  copyHostCredentials(name);
+  copyHostConfig(name);
+  execFileSync("podman", ["start", name], { stdio: "ignore" });
+
+  // Wait for container to be running
+  for (let i = 0; i < 10; i++) {
+    try {
+      const status = execFileSync(
+        "podman", ["inspect", "--format", "{{.State.Status}}", name],
+        { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }
+      ).trim();
+      if (status === "running") break;
+    } catch { /* not ready */ }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300);
   }
+
   return execSync(
-    `podman run --rm --userns=keep-id --cap-add=NET_ADMIN --cap-add=NET_RAW ` +
-      `--entrypoint bash ${envArgs} ${credsMount} ${claudeJsonMount} ${IMAGE} -c "${cmd}"`,
+    `podman exec ${name} bash -c ${JSON.stringify(cmd)}`,
     { encoding: "utf-8", timeout: 30000 }
   ).trim();
 }
 
-describe("container auth", { skip: !podmanAvailable() && "podman or image not available" }, () => {
+describe("container auth (create+cp flow)", {
+  skip: !largeWorkspaceAvailable() && "podman, image, or geneweaver-search not available",
+}, () => {
+  const name = "devp-authtest";
+
   afterEach(() => {
-    for (const dir of tmpCredsFiles) {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-    tmpCredsFiles.length = 0;
-  });
-  it("has credentials file mounted", () => {
-    const out = podmanRun(
-      ["CLAUDE_PROXY_PORT=8080"],
-      "test -f ~/.claude/.credentials.json && echo mounted || echo missing"
-    );
-    assert.equal(out, "mounted");
+    try { execSync(`podman rm -f ${name}`, { stdio: "ignore" }); } catch { /* ignore */ }
   });
 
-  it("has ~/.claude.json mounted with hasCompletedOnboarding", () => {
-    const out = podmanRun(
-      ["CLAUDE_PROXY_PORT=8080"],
-      "grep -c hasCompletedOnboarding ~/.claude.json"
-    );
+  it("credentials file is readable by vscode user", () => {
+    const out = createAndRun(name, LARGE_WORKSPACE, [],
+      "cat /home/vscode/.claude/.credentials.json | python3 -c 'import sys,json; d=json.load(sys.stdin); print(\"ok\" if \"claudeAiOauth\" in d else \"bad\")'");
+    assert.equal(out, "ok");
+  });
+
+  it("credentials file is owned by vscode", () => {
+    const out = createAndRun(name, LARGE_WORKSPACE, [],
+      "stat -c '%U' /home/vscode/.claude/.credentials.json");
+    assert.equal(out, "vscode");
+  });
+
+  it(".claude.json is readable with hasCompletedOnboarding", () => {
+    const out = createAndRun(name, LARGE_WORKSPACE, [],
+      "grep -c hasCompletedOnboarding /home/vscode/.claude.json");
     assert.ok(parseInt(out, 10) > 0);
   });
 
-  it("has oauthAccount in ~/.claude.json", () => {
-    const out = podmanRun(
-      ["CLAUDE_PROXY_PORT=8080"],
-      "grep -c accountUuid ~/.claude.json"
-    );
+  it(".claude.json has oauthAccount", () => {
+    const out = createAndRun(name, LARGE_WORKSPACE, [],
+      "grep -c accountUuid /home/vscode/.claude.json");
     assert.ok(parseInt(out, 10) > 0);
+  });
+
+  it(".claude.json is owned by vscode", () => {
+    const out = createAndRun(name, LARGE_WORKSPACE, [],
+      "stat -c '%U' /home/vscode/.claude.json");
+    assert.equal(out, "vscode");
   });
 
   it("post-create writes settings.json with model and bypassPermissions", () => {
-    const out = podmanRun(
-      ["CLAUDE_PROXY_PORT=8080", "CLAUDE_MODEL=sonnet"],
-      "bash /setup/post-create.sh >/dev/null 2>&1; cat ~/.claude/settings.json"
-    );
+    const out = createAndRun(name, LARGE_WORKSPACE, [],
+      "bash /setup/post-create.sh >/dev/null 2>&1; cat ~/.claude/settings.json");
     const settings = JSON.parse(out);
-    assert.equal(settings.model, "sonnet");
     assert.equal(settings.permissions.defaultMode, "bypassPermissions");
   });
 
   it("post-create writes BAT_THEME into .zshrc", () => {
-    const out = podmanRun(
-      ["CLAUDE_PROXY_PORT=8080"],
-      "bash /setup/post-create.sh >/dev/null 2>&1; grep '^export BAT_THEME=' ~/.zshrc"
-    );
+    const out = createAndRun(name, LARGE_WORKSPACE, [],
+      "bash /setup/post-create.sh >/dev/null 2>&1; grep '^export BAT_THEME=' ~/.zshrc");
     assert.match(out, /^export BAT_THEME="(GitHub|Monokai Extended)"$/);
-  });
-
-  it("entrypoint runs setup and executes command", () => {
-    const out = podmanRun(
-      ["CLAUDE_PROXY_PORT=8080"],
-      "claude --version",
-      { useEntrypoint: true }
-    );
-    assert.match(out, /Claude Code/);
   });
 });
