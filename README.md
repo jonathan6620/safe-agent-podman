@@ -73,6 +73,7 @@ Commands:
   up [PATH]           Start or reattach to container (default: current dir)
   down                Stop the container (preserves state)
   rm                  Remove a stopped container
+  save [PATH] [IMAGE] Save container state as a Podman image
   shell               Open a shell in the running container
   exec CMD...         Run a command in the running container
   status              Show auth and container status
@@ -119,7 +120,7 @@ apt-get install -y build-essential
 
 ### Container lifecycle
 
-Containers persist across shell exits. Installed packages and state are preserved until you explicitly remove the container.
+Containers persist across shell exits. `devp down` stops the container but preserves all state — installed packages, file changes, shell history. Use `devp rm` only when you want to delete the container entirely.
 
 ```bash
 devp up ~/project          # create container, attach shell
@@ -130,6 +131,24 @@ devp down                  # stop container (state preserved)
 devp up ~/project          # restart stopped container (state preserved)
 devp rm                    # remove container (state deleted)
 ```
+
+### Saving and restoring container state
+
+Use `devp save` to snapshot the current container (running or stopped) as a Podman image. This captures all installed packages, file changes, and configuration so you can restore later.
+
+```bash
+devp save                  # snapshot with auto-generated name + timestamp
+devp save . my-checkpoint  # snapshot with a custom image name
+
+# Restore from a saved snapshot
+devp down && devp rm
+devp up --image devp-project-saved:latest
+
+# List saved images
+podman images | grep saved
+```
+
+Each save gets a unique timestamped tag (e.g. `devp-project-saved:20260401-143022`) and the `:latest` tag always points to the most recent save.
 
 ### Examples
 

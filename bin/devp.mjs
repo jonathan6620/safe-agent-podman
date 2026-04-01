@@ -22,6 +22,7 @@ Commands:
   up [PATH]        Start proxy + container (default: current dir)
   down             Stop the running container
   rm               Remove a stopped container
+  save [PATH] [IMAGE]  Save container state as a Podman image
   shell            Open a shell in the running container
   exec CMD...      Run a command in the running container
   rebuild          Rebuild the container image
@@ -336,6 +337,40 @@ function cmdRm(args) {
   execFileSync("podman", ["rm", name], { stdio: "inherit" });
 }
 
+function cmdSave(args) {
+  const workspace = path.resolve(args.rest[0] || process.cwd());
+  const name = containerName(workspace);
+
+  if (!findContainer(name)) {
+    die(`No container found for ${name}. Use 'devp up' first.`);
+  }
+
+  const now = new Date();
+  const timestamp = now.toISOString().slice(0, 19).replace(/[-:T]/g, "").replace(/(\d{8})(\d{6})/, "$1-$2");
+  const baseImageName = `${name}-saved`;
+  const imageName = args.rest[1] || `${baseImageName}:${timestamp}`;
+
+  console.log(`Saving container ${name} as ${imageName}...`);
+  execFileSync("podman", ["commit", "--pause", name, imageName], {
+    stdio: "inherit",
+  });
+
+  if (!args.rest[1]) {
+    execFileSync("podman", ["tag", imageName, `${baseImageName}:latest`], {
+      stdio: "inherit",
+    });
+    console.log(`\nSaved as:`);
+    console.log(`  ${imageName}`);
+    console.log(`  ${baseImageName}:latest`);
+    console.log(`\nTo restore, run:`);
+    console.log(`  devp rm && devp up --image ${baseImageName}:latest`);
+  } else {
+    console.log(`\nSaved as: ${imageName}`);
+    console.log(`\nTo restore, run:`);
+    console.log(`  devp rm && devp up --image ${imageName}`);
+  }
+}
+
 function cmdShell(args) {
   const workspace = path.resolve(args.rest[0] || process.cwd());
   const name = containerName(workspace);
@@ -429,6 +464,7 @@ const commands = {
   up: cmdUp,
   down: cmdDown,
   rm: cmdRm,
+  save: cmdSave,
   shell: cmdShell,
   exec: cmdExec,
   rebuild: cmdRebuild,
