@@ -243,7 +243,7 @@ The included `devcontainer.json` allows opening this repo directly in a containe
 | `lib/container.mjs`   | Builds podman run arguments                               |
 | `proxy.py`            | Host-side reverse proxy -- logs all API calls to JSONL    |
 | `run.sh`              | Shell launcher (alternative to `devp`)                    |
-| `Dockerfile`          | Container image -- Ubuntu 24.04, Node.js 22, Claude Code (native installer) |
+| `Containerfile`       | Container image -- Ubuntu 24.04, Node.js 22, Claude Code (native installer) |
 | `devcontainer.json`   | VS Code / devcontainer CLI configuration                  |
 | `firewall.sh`         | iptables rules -- restricts outbound network access       |
 | `zshrc`               | Shell configuration -- oh-my-zsh, fnm, PATH               |

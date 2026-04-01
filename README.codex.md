@@ -58,6 +58,6 @@ Options:
 - `bin/devq.mjs`: Codex lifecycle CLI
 - `lib/codex-container.mjs`: Podman args + config drift checks for Codex
 - `lib/codex-auth.mjs`: Host auth detection for Codex
-- `Dockerfile.codex`: Codex image
+- `Containerfile.codex`: Codex image
 - `entrypoint-codex.sh`: Codex wrapper/bootstrap
 - `post-create-codex.sh`: Codex container setup

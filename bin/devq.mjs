@@ -361,7 +361,7 @@ function cmdRebuild(args) {
   console.log(`Building ${args.image}...`);
   const build = spawn(
     "podman",
-    ["build", "-f", path.join(ROOT, "Dockerfile.codex"), "-t", args.image, ROOT],
+    ["build", "-f", path.join(ROOT, "Containerfile.codex"), "-t", args.image, ROOT],
     {
       stdio: ["inherit", "inherit", "pipe"],
     }
