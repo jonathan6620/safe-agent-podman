@@ -9,6 +9,7 @@ import {
   buildArgs,
   containerConfig,
   containerName,
+  copyHostConfig,
   diffContainerConfig,
   envListToMap,
 } from "../lib/container.mjs";
@@ -294,6 +295,10 @@ async function cmdUp(args) {
   if (!isContainerRunning(name)) {
     die(`Container ${name} failed to start. Check 'podman logs ${name}'.`);
   }
+
+  // Copy ~/.claude.json into the container (not bind-mounted to avoid
+  // truncation when the host rewrites the file).
+  copyHostConfig(name);
 
   attachShell(name);
 }

@@ -100,10 +100,8 @@ if [ -f "${HOME}/.claude/.credentials.json" ]; then
 elif [ -n "${CREDS_TMPDIR}" ] && [ -f "${CREDS_TMPDIR}/.credentials.json" ]; then
     CREDS_MOUNT="-v ${CREDS_TMPDIR}/.credentials.json:/home/vscode/.claude/.credentials.json:ro,Z"
 fi
-CLAUDE_JSON_MOUNT=""
-if [ -f "${HOME}/.claude.json" ]; then
-    CLAUDE_JSON_MOUNT="-v ${HOME}/.claude.json:/home/vscode/.claude.json:Z"
-fi
+# NOTE: ~/.claude.json is copied after container start (not bind-mounted)
+# to avoid truncation when the host rewrites the file atomically.
 
 # Firewall: on when --allow-host is used, off by default
 NO_FIREWALL=""
@@ -132,10 +130,14 @@ podman run -d \
     ${NO_FIREWALL:+-e "DEVP_NO_FIREWALL=1"} \
     ${SAFE_NETWORK:+-e "DEVP_SAFE_NETWORK=1"} \
     ${CREDS_MOUNT} \
-    ${CLAUDE_JSON_MOUNT} \
     -v "${WORKSPACE}:/workspace:Z" \
     -v "claude-sandbox-history:/commandhistory" \
     claude-sandbox
+
+# Copy ~/.claude.json into the container (avoids truncation from host writes)
+if [ -f "${HOME}/.claude.json" ]; then
+    podman cp "${HOME}/.claude.json" claude-sandbox:/home/vscode/.claude.json
+fi
 
 # Attach interactive shell
 podman exec -it claude-sandbox zsh
