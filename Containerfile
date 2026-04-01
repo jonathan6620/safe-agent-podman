@@ -5,27 +5,18 @@ ARG NODE_VERSION=22
 # System tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bat \
-    bubblewrap \
     curl \
     dnsutils \
-    fuse-overlayfs \
     git \
     iptables \
     iproute2 \
     neovim \
-    podman \
     python3 \
     ripgrep \
-    slirp4netns \
     tmux \
-    uidmap \
     zsh \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/bin/batcat /usr/local/bin/bat
-
-# Configure subordinate UID/GID ranges for rootless podman inside the container
-RUN usermod --add-subuids 100000-165535 vscode \
-    && usermod --add-subgids 100000-165535 vscode
 
 # Python package management via uv
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh \

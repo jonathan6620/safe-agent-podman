@@ -159,9 +159,119 @@ describe("buildArgs", () => {
     });
     assert.ok(args.some((a) => a === "DEVP_BYPASS_PERMISSIONS=1"));
   });
+
+  it("does not include podman-in-podman flags", () => {
+    const args = buildArgs({
+      workspace: "/home/user/project",
+      proxyPort: 8080,
+      name: "devp-project",
+      image: "claude-sandbox",
+    });
+    assert.ok(!args.includes("--cap-add=SYS_ADMIN"));
+    assert.ok(!args.includes("--cap-add=SETUID"));
+    assert.ok(!args.includes("--cap-add=SETGID"));
+    assert.ok(!args.includes("--device=/dev/fuse"));
+    assert.ok(!args.includes("--device=/dev/net/tun"));
+  });
+
+  it("uses default image when not specified", () => {
+    const args = buildArgs({
+      workspace: "/home/user/project",
+      proxyPort: 8080,
+      name: "devp-project",
+    });
+    assert.ok(args.includes("claude-sandbox"));
+  });
+
+  it("uses custom image when specified", () => {
+    const args = buildArgs({
+      workspace: "/home/user/project",
+      proxyPort: 8080,
+      name: "devp-project",
+      image: "my-custom-image",
+    });
+    assert.ok(args.includes("my-custom-image"));
+    assert.ok(!args.includes("claude-sandbox"));
+  });
+
+  it("runs detached with correct name", () => {
+    const args = buildArgs({
+      workspace: "/home/user/project",
+      proxyPort: 8080,
+      name: "devp-myproject",
+      image: "claude-sandbox",
+    });
+    assert.ok(args.includes("-d"));
+    assert.ok(args.includes("--name=devp-myproject"));
+  });
+
+  it("mounts command history volume", () => {
+    const args = buildArgs({
+      workspace: "/home/user/project",
+      proxyPort: 8080,
+      name: "devp-project",
+      image: "claude-sandbox",
+    });
+    assert.ok(args.includes("claude-sandbox-history:/commandhistory"));
+  });
+
+  it("passes git identity from host", () => {
+    const args = buildArgs({
+      workspace: "/home/user/project",
+      proxyPort: 8080,
+      name: "devp-project",
+      image: "claude-sandbox",
+    });
+    // Git identity depends on host config; just verify no crash
+    // and that args is a valid array
+    assert.ok(Array.isArray(args));
+    assert.ok(args.length > 0);
+  });
+
+  it("combines allowHosts and safeNetwork", () => {
+    const args = buildArgs({
+      workspace: "/home/user/project",
+      proxyPort: 8080,
+      name: "devp-project",
+      image: "claude-sandbox",
+      allowHosts: ["npmjs.org"],
+      safeNetwork: true,
+    });
+    assert.ok(args.some((a) => a === "DEVP_ALLOW_HOSTS=npmjs.org"));
+    assert.ok(args.some((a) => a === "DEVP_SAFE_NETWORK=1"));
+    assert.ok(!args.some((a) => a === "DEVP_NO_FIREWALL=1"));
+  });
+
+  it("joins multiple allowHosts with commas", () => {
+    const args = buildArgs({
+      workspace: "/home/user/project",
+      proxyPort: 8080,
+      name: "devp-project",
+      image: "claude-sandbox",
+      allowHosts: ["github.com", "npmjs.org", "pypi.org"],
+    });
+    assert.ok(args.some((a) => a === "DEVP_ALLOW_HOSTS=github.com,npmjs.org,pypi.org"));
+  });
+
+  it("omits bypass when disabled", () => {
+    const args = buildArgs({
+      workspace: "/home/user/project",
+      proxyPort: 8080,
+      name: "devp-project",
+      image: "claude-sandbox",
+      bypass: false,
+    });
+    assert.ok(!args.some((a) => a === "DEVP_BYPASS_PERMISSIONS=1"));
+  });
 });
 
-describe("container config helpers", () => {
+describe("proxyBaseUrl", () => {
+  it("formats host and port", () => {
+    assert.equal(proxyBaseUrl(8080), "http://host.containers.internal:8080");
+  });
+});
+
+describe("envListToMap", () => {
   it("maps env lists to objects", () => {
     assert.deepEqual(envListToMap(["A=1", "B=two=parts"]), {
       A: "1",
@@ -169,6 +279,41 @@ describe("container config helpers", () => {
     });
   });
 
+  it("returns empty object for empty list", () => {
+    assert.deepEqual(envListToMap([]), {});
+  });
+
+  it("returns empty object for undefined", () => {
+    assert.deepEqual(envListToMap(), {});
+  });
+
+  it("skips entries without =", () => {
+    assert.deepEqual(envListToMap(["VALID=1", "NOPE", "ALSO_VALID=2"]), {
+      VALID: "1",
+      ALSO_VALID: "2",
+    });
+  });
+});
+
+describe("containerConfig", () => {
+  it("uses default image", () => {
+    const config = containerConfig({ proxyPort: 8080 });
+    assert.equal(config.image, "claude-sandbox");
+  });
+
+  it("accepts custom image", () => {
+    const config = containerConfig({ image: "my-image", proxyPort: 8080 });
+    assert.equal(config.image, "my-image");
+  });
+
+  it("passes env options through", () => {
+    const config = containerConfig({ proxyPort: 8080, model: "opus", log: true });
+    assert.equal(config.env.CLAUDE_MODEL, "opus");
+    assert.equal(config.env.ANTHROPIC_BASE_URL, proxyBaseUrl(8080));
+  });
+});
+
+describe("diffContainerConfig", () => {
   it("detects managed config drift", () => {
     const desired = containerConfig({
       image: "claude-sandbox",
@@ -201,5 +346,41 @@ describe("container config helpers", () => {
         "DEVP_SAFE_NETWORK",
       ]
     );
+  });
+
+  it("returns empty array when configs match", () => {
+    const config = containerConfig({ proxyPort: 8080 });
+    const diffs = diffContainerConfig(
+      { image: config.image, env: { ...config.env } },
+      config,
+    );
+    assert.deepEqual(diffs, []);
+  });
+
+  it("normalizes localhost/ prefix and :latest suffix", () => {
+    const config = containerConfig({ proxyPort: 8080 });
+    const diffs = diffContainerConfig(
+      { image: "localhost/claude-sandbox:latest", env: { ...config.env } },
+      config,
+    );
+    assert.deepEqual(diffs, []);
+  });
+
+  it("skips image comparison when actual image is null", () => {
+    const config = containerConfig({ proxyPort: 8080 });
+    const diffs = diffContainerConfig(
+      { image: null, env: { ...config.env } },
+      config,
+    );
+    assert.deepEqual(diffs, []);
+  });
+
+  it("ignores non-managed env keys", () => {
+    const config = containerConfig({ proxyPort: 8080 });
+    const diffs = diffContainerConfig(
+      { image: config.image, env: { ...config.env, RANDOM_VAR: "whatever" } },
+      config,
+    );
+    assert.deepEqual(diffs, []);
   });
 });
