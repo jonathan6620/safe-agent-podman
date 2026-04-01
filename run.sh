@@ -115,8 +115,13 @@ podman run -d \
     --name claude-sandbox \
     --userns=keep-id \
     --security-opt=label=disable \
+    --security-opt=unmask=/proc/* \
     --cap-add=NET_ADMIN \
     --cap-add=NET_RAW \
+    --cap-add=SYS_ADMIN \
+    --cap-add=SETUID \
+    --cap-add=SETGID \
+    --device=/dev/fuse \
     --network=slirp4netns:allow_host_loopback=true \
     -e "CLAUDE_PROXY_PORT=${PROXY_PORT}" \
     -e "ANTHROPIC_BASE_URL=http://host.containers.internal:${PROXY_PORT}" \
