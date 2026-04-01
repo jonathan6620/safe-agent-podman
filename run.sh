@@ -31,12 +31,29 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Check for auth -- OAuth session from ~/.claude/.credentials.json is used by default.
+# On macOS, credentials are in the Keychain; extract to a temp file for mounting.
 # ANTHROPIC_API_KEY is supported as an optional override.
-if [ -z "${ANTHROPIC_API_KEY:-}" ] && [ ! -f "${HOME}/.claude/.credentials.json" ]; then
-    echo "ERROR: No auth found."
-    echo "  Log in with 'claude' first (creates ~/.claude/.credentials.json)"
-    echo "  Or set ANTHROPIC_API_KEY for API key auth."
-    exit 1
+CREDS_TMPDIR=""
+if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+    if [ -f "${HOME}/.claude/.credentials.json" ]; then
+        : # file exists, will be mounted directly
+    elif [ "$(uname)" = "Darwin" ]; then
+        KEYCHAIN_DATA=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null || true)
+        if [ -n "${KEYCHAIN_DATA}" ]; then
+            CREDS_TMPDIR=$(mktemp -d "${TMPDIR:-/tmp}/devp-creds-XXXXXX")
+            echo "${KEYCHAIN_DATA}" > "${CREDS_TMPDIR}/.credentials.json"
+            chmod 600 "${CREDS_TMPDIR}/.credentials.json"
+        else
+            echo "ERROR: No auth found."
+            echo "  Log in with 'claude' first, or set ANTHROPIC_API_KEY."
+            exit 1
+        fi
+    else
+        echo "ERROR: No auth found."
+        echo "  Log in with 'claude' first (creates ~/.claude/.credentials.json)"
+        echo "  Or set ANTHROPIC_API_KEY for API key auth."
+        exit 1
+    fi
 fi
 
 echo "=== Claude Code Auth Proxy ==="
@@ -56,6 +73,9 @@ cleanup() {
     echo "Stopping proxy (PID ${PROXY_PID})..."
     kill "${PROXY_PID}" 2>/dev/null || true
     wait "${PROXY_PID}" 2>/dev/null || true
+    if [ -n "${CREDS_TMPDIR}" ]; then
+        rm -rf "${CREDS_TMPDIR}"
+    fi
     echo "Done."
 }
 trap cleanup EXIT
@@ -77,6 +97,8 @@ echo ""
 CREDS_MOUNT=""
 if [ -f "${HOME}/.claude/.credentials.json" ]; then
     CREDS_MOUNT="-v ${HOME}/.claude/.credentials.json:/home/vscode/.claude/.credentials.json:ro,Z"
+elif [ -n "${CREDS_TMPDIR}" ] && [ -f "${CREDS_TMPDIR}/.credentials.json" ]; then
+    CREDS_MOUNT="-v ${CREDS_TMPDIR}/.credentials.json:/home/vscode/.claude/.credentials.json:ro,Z"
 fi
 CLAUDE_JSON_MOUNT=""
 if [ -f "${HOME}/.claude.json" ]; then

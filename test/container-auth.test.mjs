@@ -1,8 +1,13 @@
-import { describe, it } from "node:test";
+import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { execSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { ensureCredentialsFile } from "../lib/auth.mjs";
 
 const IMAGE = "claude-sandbox";
+const HOST_CREDENTIALS = path.join(os.homedir(), ".claude", ".credentials.json");
 
 function podmanAvailable() {
   try {
@@ -17,13 +22,23 @@ function podmanAvailable() {
   }
 }
 
+// Track temp credential files for cleanup
+const tmpCredsFiles = [];
+
+function getCredsMountArgs() {
+  const credsFile = ensureCredentialsFile(HOST_CREDENTIALS);
+  if (!credsFile) return "";
+  if (credsFile !== HOST_CREDENTIALS) tmpCredsFiles.push(path.dirname(credsFile));
+  return `-v ${credsFile}:/home/vscode/.claude/.credentials.json:ro,Z`;
+}
+
 function podmanRun(envs, cmd, { useEntrypoint = false } = {}) {
   const envArgs = envs.map((e) => `-e ${e}`).join(" ");
-  const credsMount = `-v $HOME/.claude/.credentials.json:/home/vscode/.claude/.credentials.json:ro,Z`;
-  const claudeJsonMount = `-v $HOME/.claude.json:/home/vscode/.claude.json:Z`;
+  const credsMount = getCredsMountArgs();
+  const claudeJsonMount = fs.existsSync(path.join(os.homedir(), ".claude.json"))
+    ? `-v $HOME/.claude.json:/home/vscode/.claude.json:Z`
+    : "";
   if (useEntrypoint) {
-    // Let entrypoint handle it -- pass command as args
-    const parts = cmd.split(" ");
     return execSync(
       `podman run --rm --userns=keep-id --cap-add=NET_ADMIN --cap-add=NET_RAW ` +
         `${envArgs} ${credsMount} ${claudeJsonMount} ${IMAGE} ${cmd}`,
@@ -38,6 +53,12 @@ function podmanRun(envs, cmd, { useEntrypoint = false } = {}) {
 }
 
 describe("container auth", { skip: !podmanAvailable() && "podman or image not available" }, () => {
+  afterEach(() => {
+    for (const dir of tmpCredsFiles) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+    tmpCredsFiles.length = 0;
+  });
   it("has credentials file mounted", () => {
     const out = podmanRun(
       ["CLAUDE_PROXY_PORT=8080"],

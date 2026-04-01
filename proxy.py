@@ -40,6 +40,24 @@ def _read_oauth_token() -> str | None:
     return None
 
 
+def _read_keychain_token() -> str | None:
+    """On macOS, read OAuth token from the Keychain."""
+    if sys.platform != "darwin":
+        return None
+    try:
+        result = subprocess.run(
+            ["security", "find-generic-password", "-s", "Claude Code-credentials", "-w"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            return None
+        data = json.loads(result.stdout.strip())
+        return data.get("claudeAiOauth", {}).get("accessToken")
+    except (json.JSONDecodeError, subprocess.TimeoutExpired, OSError) as e:
+        logger.debug("Could not read Keychain token: %s", e)
+        return None
+
+
 def get_auth_token() -> str:
     """Get authentication token. Prefers Claude OAuth session, falls back to API key."""
     # 1. Explicit env override
@@ -52,7 +70,12 @@ def get_auth_token() -> str:
     if token:
         return token
 
-    # 3. Key helper script
+    # 3. macOS Keychain (credentials stored there instead of file)
+    token = _read_keychain_token()
+    if token:
+        return token
+
+    # 4. Key helper script
     helper = os.environ.get("CLAUDE_PROXY_KEY_HELPER")
     if helper:
         result = subprocess.run(
