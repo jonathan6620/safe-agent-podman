@@ -74,6 +74,7 @@ Commands:
   down                Stop the container (preserves state)
   rm                  Remove a stopped container
   save [PATH] [IMAGE] Save container state as a Podman image
+  refresh             Re-copy host credentials into the container
   shell               Open a shell in the running container
   exec CMD...         Run a command in the running container
   status              Show auth and container status
@@ -130,6 +131,14 @@ devp shell                 # open additional shell in running container
 devp down                  # stop container (state preserved)
 devp up ~/project          # restart stopped container (state preserved)
 devp rm                    # remove container (state deleted)
+```
+
+### Refreshing credentials
+
+The `.credentials.json` file is bind-mounted read-only and updates automatically from the host. However, `.claude.json` is only copied at container creation time. If your OAuth session refreshes or you re-authenticate on the host, use `refresh` to push the updated config into the container:
+
+```bash
+devp refresh                   # re-copy ~/.claude.json into the container
 ```
 
 ### Saving and restoring container state

@@ -25,6 +25,7 @@ Commands:
   down             Stop the running container
   rm               Remove a stopped container
   save [PATH] [IMAGE]  Save container state as a Podman image
+  refresh          Re-copy host credentials into the container
   shell            Open a shell in the running container
   exec CMD...      Run a command in the running container
   rebuild          Rebuild the container image
@@ -380,6 +381,19 @@ function cmdSave(args) {
   }
 }
 
+function cmdRefresh(args) {
+  const workspace = path.resolve(args.rest[0] || process.cwd());
+  const name = containerName(workspace);
+
+  if (!findContainer(name)) {
+    die(`No container found for ${name}. Use 'devp up' first.`);
+  }
+
+  console.log(`Refreshing credentials in ${name}...`);
+  copyHostConfig(name);
+  console.log("Done.");
+}
+
 function cmdShell(args) {
   const workspace = path.resolve(args.rest[0] || process.cwd());
   const name = containerName(workspace);
@@ -474,6 +488,7 @@ const commands = {
   down: cmdDown,
   rm: cmdRm,
   save: cmdSave,
+  refresh: cmdRefresh,
   shell: cmdShell,
   exec: cmdExec,
   rebuild: cmdRebuild,
