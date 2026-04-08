@@ -122,7 +122,7 @@ podman create \
     ${ALLOW_HOSTS:+-e "DEVP_ALLOW_HOSTS=${ALLOW_HOSTS}"} \
     ${NO_FIREWALL:+-e "DEVP_NO_FIREWALL=1"} \
     ${SAFE_NETWORK:+-e "DEVP_SAFE_NETWORK=1"} \
-    -v "${WORKSPACE}:/workspace:Z" \
+    -v "${WORKSPACE}:/workspace:Z,U" \
     -v "claude-sandbox-history:/commandhistory" \
     claude-sandbox
 
@@ -134,9 +134,11 @@ if [ -n "${CREDS_TMPDIR}" ] && [ -f "${CREDS_TMPDIR}/.credentials.json" ]; then
 fi
 if [ -f "${CREDS_FILE}" ]; then
     podman cp "${CREDS_FILE}" claude-sandbox:/home/vscode/.claude/.credentials.json
+    podman exec claude-sandbox chown vscode:vscode /home/vscode/.claude/.credentials.json
 fi
 if [ -f "${HOME}/.claude.json" ]; then
     podman cp "${HOME}/.claude.json" claude-sandbox:/home/vscode/.claude.json
+    podman exec claude-sandbox chown vscode:vscode /home/vscode/.claude.json
 fi
 
 podman start claude-sandbox

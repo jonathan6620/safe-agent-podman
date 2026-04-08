@@ -89,7 +89,7 @@ describe("buildArgs", () => {
       name: "devp-project",
       image: "claude-sandbox",
     });
-    assert.ok(args.some((a) => a === "/home/user/project:/workspace:Z"));
+    assert.ok(args.some((a) => a === "/home/user/project:/workspace:Z,U"));
   });
 
   it("includes CLAUDE_MODEL when model is set", () => {
