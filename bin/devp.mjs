@@ -287,12 +287,6 @@ async function cmdUp(args) {
     });
 
     execFileSync("podman", ["create", ...createArgs], { stdio: "ignore" });
-
-    // Copy auth files before starting so the entrypoint sees them.
-    // Uses podman cp (not bind-mount) to get correct vscode ownership.
-    copyHostCredentials(name);
-    copyHostConfig(name);
-
     execFileSync("podman", ["start", name], { stdio: "ignore" });
   }
 
@@ -304,6 +298,11 @@ async function cmdUp(args) {
   if (!isContainerRunning(name)) {
     die(`Container ${name} failed to start. Check 'podman logs ${name}'.`);
   }
+
+  // Copy auth files after the container is running so that
+  // `podman exec` (used for chown) works.
+  copyHostCredentials(name);
+  copyHostConfig(name);
 
   attachShell(name);
 }
