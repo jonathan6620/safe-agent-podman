@@ -10,6 +10,12 @@ export PATH="$HOME/.local/bin:$PATH"
 SETUP_DONE="/tmp/.devp-setup-done"
 
 if [ ! -f "$SETUP_DONE" ]; then
+  # Fix ownership of files in /workspace that don't match the current user
+  # (e.g. .venv or tests created by a previous container with different UID mapping).
+  if [ -d /workspace ]; then
+    sudo find /workspace -not -user "$(id -u)" -exec chown "$(id -u):$(id -g)" {} + 2>/dev/null || true
+  fi
+
   bash /setup/post-create.sh
 
   # Create claude wrapper in ~/.local/bin (first in PATH)
