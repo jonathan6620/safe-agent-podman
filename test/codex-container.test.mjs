@@ -27,7 +27,7 @@ describe("codex buildArgs", () => {
       image: "codex-sandbox",
     });
 
-    assert.ok(args.includes("--userns=keep-id"));
+    assert.ok(args.includes("--userns=keep-id:uid=1000,gid=1000"));
     assert.ok(args.includes("--security-opt=label=disable"));
     assert.ok(args.includes("--cap-add=NET_ADMIN"));
     assert.ok(args.includes("--cap-add=NET_RAW"));

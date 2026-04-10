@@ -29,7 +29,7 @@ describe("buildArgs", () => {
       image: "claude-sandbox",
     });
 
-    assert.ok(args.includes("--userns=keep-id"));
+    assert.ok(args.includes("--userns=keep-id:uid=1000,gid=1000"));
     assert.ok(args.includes("--security-opt=label=disable"));
     assert.ok(args.includes("--cap-add=NET_ADMIN"));
     assert.ok(args.includes("--cap-add=NET_RAW"));
@@ -89,7 +89,7 @@ describe("buildArgs", () => {
       name: "devp-project",
       image: "claude-sandbox",
     });
-    assert.ok(args.some((a) => a === "/home/user/project:/workspace:Z,U"));
+    assert.ok(args.some((a) => a === "/home/user/project:/workspace:Z"));
   });
 
   it("includes CLAUDE_MODEL when model is set", () => {
