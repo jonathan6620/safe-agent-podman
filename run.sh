@@ -104,7 +104,7 @@ fi
 
 podman create \
     --name claude-sandbox \
-    --userns=keep-id \
+    --userns=keep-id:uid=1000,gid=1000 \
     --security-opt=label=disable \
     --security-opt=unmask=/proc/* \
     --cap-add=NET_ADMIN \
@@ -122,7 +122,7 @@ podman create \
     ${ALLOW_HOSTS:+-e "DEVP_ALLOW_HOSTS=${ALLOW_HOSTS}"} \
     ${NO_FIREWALL:+-e "DEVP_NO_FIREWALL=1"} \
     ${SAFE_NETWORK:+-e "DEVP_SAFE_NETWORK=1"} \
-    -v "${WORKSPACE}:/workspace:Z,U" \
+    -v "${WORKSPACE}:/workspace:Z" \
     -v "claude-sandbox-history:/commandhistory" \
     claude-sandbox
 
